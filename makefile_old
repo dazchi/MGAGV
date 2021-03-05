@@ -1,0 +1,13 @@
+all: jsControl test
+	
+jsControl: jsControl.cpp JoyStick.o Car.o
+	g++ $^ -o $@ -I/usr/include/modbus -lmodbus -pthread
+
+test: test.c 
+	gcc test.c JoyStick.o -o test -I/usr/include/modbus -lmodbus -lwiringPi
+
+JoyStick.o: JoyStick.c
+	gcc -c -o $@ $^
+
+Car.o: Car.cpp
+	gcc -c -o $@ $^ -I/usr/include/modbus -lmodbus
