@@ -5,7 +5,8 @@ MagneticSensor::MagneticSensor(const char *devName)
     fd = serialOpen("/dev/ttyAMA1", 115200);
     if (fd == -1)
     {
-        std::cout << "Magnetic Sensor: Failed to Open " << devName << std::endl;
+        perror("Failed to Open Magnetic Sensor");
+        //std::cout << "Magnetic Sensor: Failed to Open " << devName << std::endl;
         return;
     }
     std::cout << "Magnetic Sensor Initialized!" << std::endl;

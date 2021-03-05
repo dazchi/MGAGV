@@ -1,13 +1,11 @@
 #include <iostream>
 #include <unistd.h>
-#include <thread>
 #include <modbus.h>
 #include "JoyStick.h"
 #include "Car.h"
 
 #define JS_PATH "/dev/input/js0"
 
-void heartBeat(void);
 int setV = 0;
 float setW = 0.0f;
 Car car;
@@ -18,8 +16,6 @@ int main(int argc, char **argv)
     struct js_event event;
     struct axis_state axes[3] = {0};
     size_t axis;
-
-    std::thread heartBeat_t(heartBeat);
 
     js = open(JS_PATH, O_RDONLY);
 
@@ -70,20 +66,10 @@ int main(int argc, char **argv)
             /* Ignore init events. */
             break;
         }
+        car.setParams(setV, setW);
     }
 
     close(js);
 
-    // heartBeat_t.join();
-
     return 0;
-}
-
-void heartBeat(void)
-{
-    while (1)
-    {
-        car.run(setV, setW);
-        usleep(10000);
-    }
 }
