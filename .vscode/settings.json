@@ -1,5 +1,7 @@
 {
     "files.associations": {
-        "joystick.h": "c"
+        "joystick.h": "c",
+        "ostream": "cpp",
+        "thread": "cpp"
     }
 }

@@ -59,7 +59,7 @@ int main(int argc, char **argv)
                 //setW = (float)axes[axis].x / 32767.0 * 1.5;
                 break;
             case 1:
-                setW = (float)axes[axis].x / 32767.0 * 1.5;
+                setW = (float)axes[axis].x / 32767.0 * 0.5;
                 break;
             case 2:
                 break;

@@ -9,19 +9,16 @@ clib = $(wildcard lib/*.c)
 cpplib = $(wildcard lib/*.cpp)
 libobj = $(cpplib:%.cpp=$(BUILDDIR)/%.o) $(clib:%.c=$(BUILDDIR)/%.o)
 
-test = $(BINDIR)/test
-jsControl = $(BINDIR)/jsControl
+all: navigation jsControl test
 
+navigation: src/navigation.cpp $(libobj)
+	$(CCP) $^ -o $(BINDIR)/$@ $(CFLAGS)
 
-all: $(test) $(jsControl)
+jsControl: src/jsControl.cpp $(libobj)
+	$(CCP) $^ -o $(BINDIR)/$@ $(CFLAGS)
 
-
-$(jsControl): src/jsControl.cpp $(libobj)
-	$(CCP) $^ -o $@ $(CFLAGS)
-
-$(test): src/test.c $(libobj)
-	$(CCP) $^ -o $@ $(CFLAGS)
-
+test: src/test.c $(libobj)
+	$(CCP) $^ -o $(BINDIR)/$@ $(CFLAGS)
 
 $(BUILDDIR)/%.o: %.cpp
 	$(CCP) -c $< -o $@ $(CFLAGS)
