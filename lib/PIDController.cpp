@@ -86,5 +86,5 @@ float PIDContorller::calculate(float error)
 
 void PIDContorller::clear()
 {
-    err = err_last = integral = 0;
+    output_last = err = err_last = integral = 0;
 }

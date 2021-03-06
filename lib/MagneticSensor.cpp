@@ -2,7 +2,7 @@
 
 MagneticSensor::MagneticSensor(const char *devName)
 {
-    fd = serialOpen("/dev/ttyAMA1", 115200);
+    fd = serialOpen(devName, 115200);
     if (fd == -1)
     {
         perror("Failed to Open Magnetic Sensor");

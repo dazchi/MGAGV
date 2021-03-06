@@ -2,6 +2,7 @@
 #include <cstdio>
 #include <unistd.h>
 #include <thread>
+#include <cmath>
 #include <wiringSerial.h>
 
 #include "JoyStick.h"
@@ -10,7 +11,8 @@
 #include "Car.h"
 
 #define JS_PATH "/dev/input/js0"
-#define MS_PATH "/dev/ttyAMA1"
+#define MS_PATH1 "/dev/ttyAMA1"
+#define MS_PATH2 "/dev/ttyAMA2"
 
 enum OperationMode
 {
@@ -22,6 +24,7 @@ OperationMode mode = None;
 
 //Magnetic Sensor Variables
 MagneticSensor *magSen1, *magSen2;
+int lastOffset = 0;
 
 //JoyStick Variables
 int js;
@@ -35,16 +38,17 @@ float setV_prev = 0;
 float setW = 0.0f;
 
 //PID Controllers
-PIDContorller angularPID(0.0030, 0.00, 0.0008, 3, -3, 0.3);
+PIDContorller angularPID(0.003, 0.0, 0.000, 3, -3, 100);
 PIDContorller linearPID(22, 0.01, 0.00, 1000, -1000, 10);
 
 void joyStickReceive(void);
 
 int main(int argc, char **argv)
 {
-    magSen1 = new MagneticSensor(MS_PATH);
+    magSen1 = new MagneticSensor(MS_PATH1);
+    magSen2 = new MagneticSensor(MS_PATH2);
     dejaVu = new Car();
-
+  
     js = open(JS_PATH, O_RDONLY);
     if (js == -1)
     {
@@ -72,16 +76,32 @@ int main(int argc, char **argv)
             {
                 setV = linearPID.calculate(500, setV_prev);
                 setW = angularPID.calculate(magSen1->getTrackOffset(0));
+                lastOffset = magSen1->getTrackOffset(0);
             }
             else
             {
+                // if (lastOffset == 80)
+                // {
+                //     setV = linearPID.calculate(400, setV_prev);
+                //     setW = angularPID.calculate(lastOffset);
+                // }
+                // else if (lastOffset == -80)
+                // {
+                //     setV = linearPID.calculate(400, setV_prev);
+                //     setW = angularPID.calculate(lastOffset);
+                // }
+                // else
+                // {
+                //     setV = 0;
+                //     setW = 0;
+                // }
                 setV = 0;
                 setW = 0;
             }
-            // system("clear");
+            system("clear");
             dejaVu->setParams(setV, setW);
             setV_prev = setV;
-            // printf("V = %3.2f\tW = %3.2f\tOffset = %2d\n", setV, setW, magSen1->getTrackOffset(0));
+            printf("V = %3.2f\tW = %3.2f\tOffset = %2d\n", setV, setW, magSen1->getTrackOffset(0));
             usleep(10000);
             break;
         }
@@ -124,6 +144,11 @@ void joyStickReceive(void)
                     mode = Auto;
                     angularPID.clear();
                     linearPID.clear();
+                    setV_prev = 0;
+                }
+                else if (event.number == 0)
+                {
+                    exit(0);
                 }
             }
             break;
@@ -145,7 +170,6 @@ void joyStickReceive(void)
                     {
                         setW = (float)axes[axis].x / 32767.0 * 1.5;
                         dejaVu->setParams(setV, setW);
-                        
                     }
                     break;
                 case 2:

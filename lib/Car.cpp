@@ -41,12 +41,14 @@ void Car::setParams(int16_t V, float W)
     Vl = (float)V - ((W * AXLE_LENGTH) / 2.0f);
     Vr = (float)V + ((W * AXLE_LENGTH) / 2.0f);
 
-    //printf("Vl = %f, Vr = %f\n", Vl, Vr);
+    // printf("set: Vl = %f, Vr = %f\n", Vl, Vr);
     setFlag = true;
+    //run();
 }
 
 void Car::run()
 {
+    //  printf("run:Vl = %f, Vr = %f\n", Vl, Vr);
     modbus_set_slave(modbus_ctx, 1);
     // modbus_write_register(modbus_ctx, 0x203A, convertToRPM(Vl)); //Set Target Velocity
     if (modbus_write_register(modbus_ctx, 0x203A, convertToRPM(Vl)) == -1)
@@ -93,16 +95,21 @@ void Car::clearError(void)
 
 void Car::carComm(void)
 {
-    static int count = 0;
+    int count = 0;
     while (1)
     {
-        // if ((count++ > 700) || (setFlag == true))
+        // if ((count > 700) )
         // {
+        //     printf("count = %d\n",count);
         //     run();
-        //     count = 0;
-        //     setFlag = false;
+        //     count = 0;            
+        // }
+        // if(setFlag == true){
+        //     run();            
+        //     setFlag = false;           
         // }
         run();
+        count++;
         usleep(10000);
     }
 }
