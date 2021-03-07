@@ -10,6 +10,7 @@
 #include "MagneticSensor.h"
 #include "Car.h"
 
+#define _USE_MATH_DEFINES
 #define JS_PATH "/dev/input/js0"
 #define MS_PATH1 "/dev/ttyAMA1"
 #define MS_PATH2 "/dev/ttyAMA2"
@@ -38,9 +39,12 @@ float setV_prev = 0;
 float setW = 0.0f;
 
 //PID Controllers
-PIDContorller angularPID(0.003, 0.0, 0.000, 3, -3, 100);
-PIDContorller linearPID(22, 0.01, 0.00, 1000, -1000, 10);
+PIDContorller headingPID(0.5, 0.0, 0, 3, -3, 10);
+PIDContorller offsetPID(0.008, 0.0, 0, 3, -3, 10);
+PIDContorller linearPID(5, 0.0, 0.00, 200, -200, 1);
 
+int calcPose(float &angle, float &d);
+void followTrack(void);
 void joyStickReceive(void);
 
 int main(int argc, char **argv)
@@ -48,7 +52,7 @@ int main(int argc, char **argv)
     magSen1 = new MagneticSensor(MS_PATH1);
     magSen2 = new MagneticSensor(MS_PATH2);
     dejaVu = new Car();
-  
+
     js = open(JS_PATH, O_RDONLY);
     if (js == -1)
     {
@@ -72,37 +76,7 @@ int main(int argc, char **argv)
         case Manual:
             break;
         case Auto:
-            if (magSen1->getTrackCount() == 1)
-            {
-                setV = linearPID.calculate(500, setV_prev);
-                setW = angularPID.calculate(magSen1->getTrackOffset(0));
-                lastOffset = magSen1->getTrackOffset(0);
-            }
-            else
-            {
-                // if (lastOffset == 80)
-                // {
-                //     setV = linearPID.calculate(400, setV_prev);
-                //     setW = angularPID.calculate(lastOffset);
-                // }
-                // else if (lastOffset == -80)
-                // {
-                //     setV = linearPID.calculate(400, setV_prev);
-                //     setW = angularPID.calculate(lastOffset);
-                // }
-                // else
-                // {
-                //     setV = 0;
-                //     setW = 0;
-                // }
-                setV = 0;
-                setW = 0;
-            }
-            system("clear");
-            dejaVu->setParams(setV, setW);
-            setV_prev = setV;
-            printf("V = %3.2f\tW = %3.2f\tOffset = %2d\n", setV, setW, magSen1->getTrackOffset(0));
-            usleep(10000);
+            followTrack();
             break;
         }
         //system("clear");
@@ -114,6 +88,109 @@ int main(int argc, char **argv)
     }
 
     return 0;
+}
+
+int calcPose(float &angle, float &d)
+{
+    if (magSen1->getTrackCount() == 1 && magSen2->getTrackCount() == 1)
+    {
+        int16_t offset1, offset2;
+        // float angle;
+        // float d;
+
+        offset1 = magSen1->getTrackOffset(0);
+        offset2 = magSen2->getTrackOffset(0);
+        //printf("off1 = %3d\t off2 = %3d\n", offset1, offset2);
+        if ((offset1 == 0) || (offset2 == 0))
+        {
+            if (offset1 == offset2)
+            {
+                //printf("Both offset is Zero\n");
+                angle = 0;
+                d = 0;
+            }
+            else
+            {
+                //printf("One offset is Zero\n");
+                if (offset1 == 0)
+                {
+                    angle = -atan2(offset2, CAR_LENGTH);
+                    d = cos(angle) * offset2 / 2.0f;
+                }
+                else
+                {
+                    angle = -atan2(offset1, CAR_LENGTH);
+                    d = -cos(angle) * offset1 / 2.0f;
+                }
+            }
+        }
+        else if ((offset1 & 0x8000) ^ (offset2 & 0x8000)) //Determine if AGV Center crosses track
+        {
+            //printf("Same Side\n");
+            if (abs(offset1) == abs(offset2))
+            {
+                angle = 0;
+                d = -offset1;
+            }
+            else
+            {
+
+                if (offset1 > 0)
+                {
+                    angle = atan2(abs(offset2) - abs(offset1), CAR_LENGTH);
+                    d = -cos(angle) * (abs(offset1) + abs(offset2)) / 2.0f;
+                }
+                else
+                {
+                    angle = -atan2(abs(offset2) - abs(offset1), CAR_LENGTH);
+                    d = cos(angle) * (abs(offset1) + abs(offset2)) / 2.0f;
+                }
+            }
+        }
+        else
+        {
+            //printf("Diff Side\n");
+            angle = -atan2(offset1, fabs(offset1 * CAR_LENGTH / abs(offset1 + offset2)));
+            if (abs(offset2) > abs(offset1))
+            {
+                d = -sin(angle) * abs(offset2 - offset1) * CAR_LENGTH / (2.0f * abs(offset1 + offset2));
+            }
+            else
+            {
+                d = sin(angle) * abs(offset1 - offset2) * CAR_LENGTH / (2.0f * abs(offset1 + offset2));
+            }
+        }
+        return 1;
+    }
+    else
+    {
+        return 0;
+    }
+}
+
+void followTrack(void)
+{
+    system("clear");
+    float angle, d;
+    float setV_prev = 0;
+    if (calcPose(angle, d))
+    {
+        setV = linearPID.calculate(200, setV_prev);
+        //setW = offsetPID.calculate(headingPID.calculate(0, angle), d);
+        setW = headingPID.calculate(offsetPID.calculate(0, d), angle);
+        //setW = offsetPID.calculate(0, d);
+        //setW = headingPID.calculate(0, angle);
+    }
+    else
+    {
+        setV = 0;
+        setW = 0;
+    }
+    dejaVu->setParams(setV, setW);
+    setV_prev = setV;
+    printf("Angle = %3.2f, d = %3.2f\n", angle / M_PI * 180.0f, d);
+    printf("V = %3.2f\tW = %3.2f\n", setV, setW);
+    usleep(10000);
 }
 
 void joyStickReceive(void)
@@ -142,13 +219,22 @@ void joyStickReceive(void)
                 {
                     printf("Auto Mode\n");
                     mode = Auto;
-                    angularPID.clear();
+                    offsetPID.clear();
+                    headingPID.clear();
                     linearPID.clear();
                     setV_prev = 0;
                 }
                 else if (event.number == 0)
                 {
                     exit(0);
+                }
+                else if (event.number == 4)
+                {
+                    dejaVu->disableDrivers();
+                }
+                else if (event.number == 5)
+                {
+                    dejaVu->enableDrivers();
                 }
             }
             break;
@@ -181,6 +267,7 @@ void joyStickReceive(void)
             /* Ignore init events. */
             break;
         }
+        printf("V = %3.2f\tW = %3.2f\n", setV, setW);
     }
 
     isJoyStickAlive = false;

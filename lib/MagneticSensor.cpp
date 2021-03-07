@@ -9,6 +9,8 @@ MagneticSensor::MagneticSensor(const char *devName)
         //std::cout << "Magnetic Sensor: Failed to Open " << devName << std::endl;
         return;
     }
+    usleep(100000);
+    serialFlush(fd);
     std::cout << "Magnetic Sensor Initialized!" << std::endl;
 
     receivePacket_t = new std::thread(&MagneticSensor::receivePacket, this);
@@ -41,7 +43,7 @@ void MagneticSensor::receivePacket(void)
                     switch (trackCount)
                     {
                     case 1:
-                        //printf("Track Offset = %d\n", (rxBuff[1].trackOffset.sign ? -1 : 1) * rxBuff[1].trackOffset.offset << 1);
+                        // printf("Track Offset = %d\n", (rxBuff[1].trackOffset.sign ? -1 : 1) * rxBuff[1].trackOffset.offset << 1);
                         //printf("Track Width = %d\n", (((rxBuff[2].trackWidth & 0xC0) >> 2) + (rxBuff[2].trackWidth - 0x29)) << 1);
                         trackOffset[0] = (rxBuff[1].trackOffset.sign ? -1 : 1) * rxBuff[1].trackOffset.offset << 1;
                         trackWidth = (((rxBuff[2].trackWidth & 0xC0) >> 2) + (rxBuff[2].trackWidth - 0x29)) << 1;
@@ -80,14 +82,14 @@ int MagneticSensor::getTrackOffset(int num)
         if (num == 0)
         {
             return trackOffset[0];
-        }        
+        }
     }
     else if (trackCount == 2)
     {
         if ((num == 0) || (num == 1))
         {
             return trackOffset[num];
-        }            
+        }
     }
     return -1;
 }
