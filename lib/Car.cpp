@@ -25,6 +25,10 @@ Car::Car(/* args */)
     usleep(SEND_DELAY);
     modbus_write_register(modbus_ctx, 0x2031, 0x0008); //Enable all drivers
     usleep(SEND_DELAY);
+    modbus_write_register(modbus_ctx, 0x2037, 0); //Enable all drivers
+    usleep(SEND_DELAY);
+    modbus_write_register(modbus_ctx, 0x2038, 0); //Enable all drivers
+    usleep(SEND_DELAY);
 
     carComm_t = new std::thread(&Car::carComm, this);
 }

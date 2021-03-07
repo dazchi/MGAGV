@@ -39,9 +39,9 @@ float setV_prev = 0;
 float setW = 0.0f;
 
 //PID Controllers
-PIDContorller headingPID(0.5, 0.0, 0, 3, -3, 10);
-PIDContorller offsetPID(0.008, 0.0, 0, 3, -3, 10);
-PIDContorller linearPID(5, 0.0, 0.00, 200, -200, 1);
+PIDContorller headingPID(0.7, 0, 0.2, 3, -3, 10);
+PIDContorller offsetPID(0.02, 0.0, 0.001, 3, -3, 10);
+PIDContorller linearPID(5, 0.0, 0.00, 600, -1000, 4);
 
 int calcPose(float &angle, float &d);
 void followTrack(void);
@@ -74,6 +74,8 @@ int main(int argc, char **argv)
         case None:
             break;
         case Manual:
+            // float a, b;
+            // calcPose(a, b);
             break;
         case Auto:
             followTrack();
@@ -160,6 +162,7 @@ int calcPose(float &angle, float &d)
                 d = sin(angle) * abs(offset1 - offset2) * CAR_LENGTH / (2.0f * abs(offset1 + offset2));
             }
         }
+        //printf("Angle = %3.2f, d = %3.2f\n", angle / M_PI * 180.0f, d);
         return 1;
     }
     else
@@ -177,12 +180,24 @@ void followTrack(void)
     {
         setV = linearPID.calculate(200, setV_prev);
         //setW = offsetPID.calculate(headingPID.calculate(0, angle), d);
+
         setW = headingPID.calculate(offsetPID.calculate(0, d), angle);
         //setW = offsetPID.calculate(0, d);
         //setW = headingPID.calculate(0, angle);
     }
     else
     {
+        // setW = 0;
+        // if (setV > 0)
+        // {
+        //     for (size_t i = setV; i > 0; i-=20)
+        //     {
+        //         dejaVu->setParams(i, 0);
+        //         usleep(10000);
+        //     }
+        //     setV = 0;
+        //     dejaVu->setParams(0, 0);
+        // }
         setV = 0;
         setW = 0;
     }

@@ -8,7 +8,7 @@
 #include <thread>
 #include <modbus.h>
 
-#define WHEEL_RADIUS (640.f) //Wheel radius in mm
+#define WHEEL_RADIUS (64.0f) //Wheel radius in mm
 #define AXLE_LENGTH (310.0f) //Axle effective length in mm
 #define CAR_LENGTH (640.0f) //Axle effective length in mm
 #define SEND_DELAY (8000)
