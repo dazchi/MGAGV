@@ -39,9 +39,9 @@ float setV_prev = 0;
 float setW = 0.0f;
 
 //PID Controllers
-PIDContorller headingPID(0.7, 0, 0.2, 3, -3, 10);
+PIDContorller headingPID(0.7, 0, 0.7, 3, -3, 10);
 PIDContorller offsetPID(0.02, 0.0, 0.001, 3, -3, 10);
-PIDContorller linearPID(5, 0.0, 0.00, 600, -1000, 4);
+PIDContorller linearPID(5, 0.0, 0.00, 800, -1000, 4);
 
 int calcPose(float &angle, float &d);
 void followTrack(void);
