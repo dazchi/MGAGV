@@ -39,9 +39,9 @@ float setV_prev = 0;
 float setW = 0.0f;
 
 //PID Controllers
-PIDContorller headingPID(0.7, 0, 0.7, 3, -3, 10);
-PIDContorller offsetPID(0.02, 0.0, 0.001, 3, -3, 10);
-PIDContorller linearPID(5, 0.0, 0.00, 800, -1000, 4);
+PIDContorller headingPID(1.0, 0, 1.5, 3, -3, 10);
+PIDContorller offsetPID(0.02, 0.0, 0.04, 3, -3, 10);
+PIDContorller linearPID(5, 0.0, 0.00, 1000, -800, 10);
 
 int calcPose(float &angle, float &d);
 void followTrack(void);
@@ -74,8 +74,11 @@ int main(int argc, char **argv)
         case None:
             break;
         case Manual:
-            // float a, b;
-            // calcPose(a, b);
+            float a, b;
+            calcPose(a, b);
+            system("clear");
+            printf("Angle = %3.2f, d = %3.2f\n", a / M_PI * 180.0f, b);
+            printf("width = %3d\n", magSen1->getTrackWidth());
             break;
         case Auto:
             followTrack();
@@ -94,14 +97,34 @@ int main(int argc, char **argv)
 
 int calcPose(float &angle, float &d)
 {
-    if (magSen1->getTrackCount() == 1 && magSen2->getTrackCount() == 1)
+    if (magSen1->getTrackCount() >= 1 && magSen2->getTrackCount() >= 1)
     {
         int16_t offset1, offset2;
+        int16_t offset1_prev, offset2_prev;
         // float angle;
         // float d;
+        if (magSen1->getTrackCount() == 2)
+        {
+            offset1 = abs(magSen1->getTrackOffset(0)) < abs(magSen1->getTrackOffset(1)) ? magSen1->getTrackOffset(0) : magSen1->getTrackOffset(1);
+        }
+        else
+        {
+            offset1 = magSen1->getTrackOffset(0);
+        }
+        if (magSen1->getTrackCount() == 2)
+        {
+            offset2 = abs(magSen2->getTrackOffset(0)) < abs(magSen2->getTrackOffset(1)) ? magSen2->getTrackOffset(0) : magSen2->getTrackOffset(1);
+        }
+        else
+        {
+            offset2 = magSen2->getTrackOffset(0);
+        }
 
-        offset1 = magSen1->getTrackOffset(0);
-        offset2 = magSen2->getTrackOffset(0);
+        // offset1 = magSen1->getTrackOffset(0);
+        // offset2 = magSen2->getTrackOffset(0);
+
+        offset1_prev = offset1;
+        offset2_prev = offset2;
         //printf("off1 = %3d\t off2 = %3d\n", offset1, offset2);
         if ((offset1 == 0) || (offset2 == 0))
         {
@@ -178,28 +201,35 @@ void followTrack(void)
     float setV_prev = 0;
     if (calcPose(angle, d))
     {
+        if (magSen1->getTrackWidth() > 30)
+        {
+        }
         setV = linearPID.calculate(200, setV_prev);
         //setW = offsetPID.calculate(headingPID.calculate(0, angle), d);
-
         setW = headingPID.calculate(offsetPID.calculate(0, d), angle);
         //setW = offsetPID.calculate(0, d);
         //setW = headingPID.calculate(0, angle);
     }
     else
     {
-        // setW = 0;
-        // if (setV > 0)
-        // {
-        //     for (size_t i = setV; i > 0; i-=20)
-        //     {
-        //         dejaVu->setParams(i, 0);
-        //         usleep(10000);
-        //     }
-        //     setV = 0;
-        //     dejaVu->setParams(0, 0);
-        // }
-        setV = 0;
-        setW = 0;
+        if (setV > 0)
+        {
+            setW = 0;
+            for (; setV > 0; setV -= 15)
+            {
+                if (setV < 0)
+                {
+                    setV = 0;
+                }
+                dejaVu->setParams(setV, setW);
+                usleep(10000);
+            }
+        }
+        else
+        {
+            setV = 0;
+            setW = 0;
+        }
     }
     dejaVu->setParams(setV, setW);
     setV_prev = setV;
@@ -245,7 +275,9 @@ void joyStickReceive(void)
                 }
                 else if (event.number == 4)
                 {
+                    dejaVu->setParams(0, 0);
                     dejaVu->disableDrivers();
+                    dejaVu->clearError();
                 }
                 else if (event.number == 5)
                 {
@@ -282,7 +314,7 @@ void joyStickReceive(void)
             /* Ignore init events. */
             break;
         }
-        printf("V = %3.2f\tW = %3.2f\n", setV, setW);
+        // printf("V = %3.2f\tW = %3.2f\n", setV, setW);
     }
 
     isJoyStickAlive = false;
