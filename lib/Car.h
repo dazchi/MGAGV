@@ -27,6 +27,7 @@ private:
     float RPML = 0;                                             // Auctal Velocity of Left Wheel (RPM)
     float RPMR = 0;                                             // Auctal Velocity of Right Wheel (RPM)
     bool setFlag = false;
+    float VBat = 0.0;    
 
     int16_t convertToRPM(float v);
     void run();
@@ -40,6 +41,7 @@ public:
     void enableDrivers(void);
     void disableDrivers(void);
     void clearError(void);
+    float getDriverVoltage(void);
 };
 
 #endif

@@ -19,7 +19,8 @@ enum OperationMode
 {
     None,
     Manual,
-    Auto
+    Auto,
+    WaitingTrack,
 };
 OperationMode mode = None;
 
@@ -37,11 +38,12 @@ Car *dejaVu;
 float setV = 0;
 float setV_prev = 0;
 float setW = 0.0f;
+int dir = 1;
 
 //PID Controllers
-PIDContorller headingPID(1.0, 0, 1.5, 3, -3, 10);
-PIDContorller offsetPID(0.02, 0.0, 0.04, 3, -3, 10);
-PIDContorller linearPID(5, 0.0, 0.00, 1000, -800, 10);
+PIDContorller headingPID(0.9, 0, 3, 3, -3, 0.2);
+PIDContorller offsetPID(0.02, 0.0, 0.02, 3, -3, 0.2);
+PIDContorller linearPID(5, 0.0, 0.00, 1000, -1000, 10);
 
 int calcPose(float &angle, float &d);
 void followTrack(void);
@@ -82,6 +84,20 @@ int main(int argc, char **argv)
             break;
         case Auto:
             followTrack();
+            break;
+        case WaitingTrack:
+            if ((magSen1->getTrackCount() > 0) && (magSen2->getTrackCount() > 0))
+            {
+                dir *= -1;
+                offsetPID.clear();
+                headingPID.clear();
+                linearPID.clear();
+                mode = Auto;
+            }
+            else
+            {
+                dejaVu->setParams(-dir * 100, 0);
+            }
             break;
         }
         //system("clear");
@@ -200,13 +216,11 @@ void followTrack(void)
     float angle, d;
     float setV_prev = 0;
     if (calcPose(angle, d))
-    {
-        if (magSen1->getTrackWidth() > 30)
-        {
-        }
-        setV = linearPID.calculate(200, setV_prev);
+    {    
+        setV = linearPID.calculate(dir * 1000, setV_prev);
         //setW = offsetPID.calculate(headingPID.calculate(0, angle), d);
-        setW = headingPID.calculate(offsetPID.calculate(0, d), angle);
+        setW = dir * headingPID.calculate(offsetPID.calculate(0, d), dir * angle);
+        
         //setW = offsetPID.calculate(0, d);
         //setW = headingPID.calculate(0, angle);
     }
@@ -215,15 +229,32 @@ void followTrack(void)
         if (setV > 0)
         {
             setW = 0;
-            for (; setV > 0; setV -= 15)
+            for (; setV > 0; setV -= 10)
             {
-                if (setV < 0)
-                {
-                    setV = 0;
-                }
                 dejaVu->setParams(setV, setW);
                 usleep(10000);
             }
+            if (setV < 0)
+            {
+                setV = 0;
+                dejaVu->setParams(0, 0);
+            }
+            mode = WaitingTrack;
+        }
+        else if (setV < 0)
+        {
+            setW = 0;
+            for (; setV < 0; setV += 10)
+            {
+                dejaVu->setParams(setV, setW);
+                usleep(10000);
+            }
+            if (setV > 0)
+            {
+                setV = 0;
+                dejaVu->setParams(0, 0);
+            }
+            mode = WaitingTrack;
         }
         else
         {
@@ -283,6 +314,11 @@ void joyStickReceive(void)
                 {
                     dejaVu->enableDrivers();
                 }
+                else if (event.number == 3)
+                {
+                    dir *= -1;
+                    printf("DIR CHANGED!\n");
+                }
             }
             break;
         case JS_EVENT_AXIS:
@@ -294,7 +330,7 @@ void joyStickReceive(void)
                 case 0:
                     if (mode == Manual)
                     {
-                        setV = -(float)axes[axis].y / 32767.0 * 500.0;
+                        setV = -(float)axes[axis].y / 32767.0 * 800.0;
                         dejaVu->setParams(setV, setW);
                     }
                     break;

@@ -102,15 +102,24 @@ void Car::carComm(void)
     int count = 0;
     while (1)
     {
+        if (count > 100)
+        {
+            count = 0;
+            uint16_t rxBuffer;
+            modbus_set_slave(modbus_ctx, 1);
+            modbus_read_registers(modbus_ctx, 0x2029, 1, &rxBuffer);
+            VBat = rxBuffer / 100.0f;
+            usleep(SEND_DELAY);
+        }
         // if ((count > 700) )
         // {
         //     printf("count = %d\n",count);
         //     run();
-        //     count = 0;            
+        //     count = 0;
         // }
         // if(setFlag == true){
-        //     run();            
-        //     setFlag = false;           
+        //     run();
+        //     setFlag = false;
         // }
         run();
         count++;
@@ -128,4 +137,9 @@ void Car::getRPM(void)
     modbus_set_slave(modbus_ctx, 2);
     modbus_read_registers(modbus_ctx, 0x202C, 1, &rxBuffer);
     RPMR = ((int16_t)rxBuffer) / 10.0;
+}
+
+float Car::getDriverVoltage(void)
+{
+    return VBat;
 }

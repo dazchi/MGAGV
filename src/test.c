@@ -7,6 +7,7 @@
 #include <modbus.h>
 #include <wiringSerial.h>
 #include "JoyStick.h"
+#include "QRCode.h"
 
 #define JS_PATH "/dev/input/js0"
 
@@ -22,7 +23,7 @@ int motorTest()
         fprintf(stdout, "Unable to create the libmodbus context\n");
         return -1;
     }
- 
+
     modbus_rtu_set_serial_mode(ctx, MODBUS_RTU_RS485);
     modbus_set_slave(ctx, 0);
     modbus_set_byte_timeout(ctx, 0, 0);
@@ -116,60 +117,18 @@ union packet
 
 int main(int argc, char **argv)
 {
-    int fd = 0;
-    union packet rxBuff[3];
-    int rxIndex = 0;
-    fd = serialOpen("/dev/ttyAMA1", 115200);
-    if (fd == -1)
-    {
-        printf("open serial failed\n");
-        return -1;
-    }
-    printf("serialOpen success\n");
+    QRCode qrCode;
+    int16_t x, y, angle;
+    uint32_t tagnum;
 
     while (1)
     {
-        if (serialDataAvail(fd))
+        if (qrCode.getInformation(x, y, angle, tagnum))
         {
-            rxBuff[rxIndex].byte = serialGetchar(fd);
-            //printf("0x%X 0x%X\t", rxBuff[rxIndex].trackNo.trackCount, rxBuff[rxIndex].trackNo.format);
-            if ((rxBuff[0].trackNo.format) == 0x39)
-            {
-                rxIndex++;
-                if (rxIndex == (rxBuff[0].trackNo.trackCount ? 3 : 1))
-                {
-                    system("clear");
-                    printf("packet receive, length = %d\n", rxIndex);
-                    printf("Track Count = %d\n", rxBuff[0].trackNo.trackCount);
-                    switch (rxBuff[0].trackNo.trackCount)
-                    {
-                    case 1:
-                        printf("Track Offset = %d\n", (rxBuff[1].trackOffset.sign ? -1 : 1) * rxBuff[1].trackOffset.offset << 1);
-                        printf("Track Width = %d\n", (((rxBuff[2].trackWidth & 0xC0) >> 2) + (rxBuff[2].trackWidth - 0x29)) << 1);
-                        break;
-                    case 2:
-                        printf("Track 1: Offset = %d\n", (rxBuff[1].trackOffset.sign ? -1 : 1) * rxBuff[1].trackOffset.offset << 1);
-                        printf("Track 2: Offset = %d\n", (rxBuff[2].trackOffset.sign ? -1 : 1) * rxBuff[2].trackOffset.offset << 1);
-                        break;
-                    default:
-                        break;
-                    }
-                    usleep(5000);
-                    //sleep(1);
-                    rxIndex = 0;
-                    serialFlush(fd);
-                }
-            }
-            else
-            {
-                rxIndex = 0;
-                serialFlush(fd);
-            }
+            printf("X: %d\tY: %d\tAngle: %d\tTagNum: %d\n", x, y, angle, tagnum);
         }
-        usleep(1000);
+        usleep(10000);
     }
-
-    serialClose(fd);
 
     return 0;
 }
