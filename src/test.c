@@ -2,12 +2,14 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <math.h>
 #include <linux/joystick.h>
 #include <errno.h>
 #include <modbus.h>
 #include <wiringSerial.h>
 #include "JoyStick.h"
 #include "QRCode.h"
+#include "../lib/SRampGenerator.h"
 
 #define JS_PATH "/dev/input/js0"
 
@@ -115,20 +117,75 @@ union packet
     uint8_t trackWidth;
 };
 
+// void SRampGenerator(int16_t startV, int16_t targetV, uint16_t timeFrames)
+// {
+//     float *commandV;
+//     float *A, *J;
+//     float absJ;
+
+//     if ((timeFrames % 3) != 0)
+//     {
+//         timeFrames -= (timeFrames % 3);
+//     }
+
+//     absJ = (9.0f / 2.0f) * (targetV - startV) / powf(timeFrames, 2);
+//     commandV = (float *)malloc((timeFrames * sizeof(float)) + 1);
+//     A = (float *)malloc(timeFrames * sizeof(float));
+//     J = (float *)malloc(timeFrames * sizeof(float));
+
+//     for (size_t i = 0; i < timeFrames / 3; i++)
+//     {
+//         J[i] = absJ;
+//     }
+//     for (size_t i = (timeFrames / 3); i < 2 * timeFrames / 3; i++)
+//     {
+//         J[i] = 0;
+//     }
+//     for (size_t i = (2 * timeFrames / 3); i < timeFrames; i++)
+//     {
+//         J[i] = -absJ;
+//     }
+
+//     commandV[0] = startV;
+//     A[0] = 0.0f;
+//     for (size_t i = 1; i < timeFrames; i++)
+//     {
+//         A[i] = A[i - 1] + J[i - 1];
+//         commandV[i] = commandV[i - 1] + A[i - 1] + 0.5f * J[i - 1];
+//     }
+//     commandV[timeFrames] = targetV;
+
+//     printf("T\tV\t\tA\t\tJ\t\t\n");
+//     for (size_t i = 0; i < timeFrames + 1; i++)
+//     {
+//         printf("%d\t%f\t%f\t%f\n", i, commandV[i], A[i], J[i]);
+//     }
+// }
 int main(int argc, char **argv)
 {
-    QRCode qrCode;
-    int16_t x, y, angle;
-    uint32_t tagnum;
+    // QRCode qrCode;
+    // int16_t x, y, angle;
+    // uint32_t tagnum;
 
-    while (1)
+    // while (1)
+    // {
+    //     if (qrCode.getInformation(x, y, angle, tagnum))
+    //     {
+    //         printf("X: %d\tY: %d\tAngle: %d\tTagNum: %d\n", x, y, angle, tagnum);
+    //     }
+    //     usleep(10000);
+    // }
+
+    //SRampGenerator(1350, -1350, 100);
+    SRampGenerator rampGenerator;
+    rampGenerator.generateVelocityProfile(1350,100);
+    for (size_t i = 0; i < 50; i++)
     {
-        if (qrCode.getInformation(x, y, angle, tagnum))
-        {
-            printf("X: %d\tY: %d\tAngle: %d\tTagNum: %d\n", x, y, angle, tagnum);
-        }
-        usleep(10000);
+        rampGenerator.getV();  
     }
+    
+
+    rampGenerator.generateVelocityProfile(1000,2000,100);
 
     return 0;
 }

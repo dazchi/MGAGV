@@ -9,7 +9,7 @@ clib = $(wildcard lib/*.c)
 cpplib = $(wildcard lib/*.cpp)
 libobj = $(cpplib:%.cpp=$(BUILDDIR)/%.o) $(clib:%.c=$(BUILDDIR)/%.o)
 
-all: $(BINDIR)/navigation $(BINDIR)/jsControl $(BINDIR)/test $(BINDIR)/qrLocalization $(BINDIR)/tcpControl
+all: $(BINDIR)/navigation $(BINDIR)/jsControl $(BINDIR)/test $(BINDIR)/qrLocalization $(BINDIR)/tcpControl $(BINDIR)/fullNavigation
 
 $(BINDIR)/navigation: src/navigation.cpp $(libobj)
 	$(CCP) $^ -o $@ $(CFLAGS)
@@ -24,6 +24,9 @@ $(BINDIR)/qrLocalization: src/qrLocalization.cpp $(libobj)
 	$(CCP) $^ -o $@ $(CFLAGS)
 
 $(BINDIR)/tcpControl: src/tcpControl.cpp $(libobj)
+	$(CCP) $^ -o $@ $(CFLAGS)
+
+$(BINDIR)/fullNavigation: src/fullNavigation.cpp $(libobj)
 	$(CCP) $^ -o $@ $(CFLAGS)
 
 $(BUILDDIR)/%.o: %.cpp

@@ -8,15 +8,12 @@
 #include "JoyStick.h"
 #include "PIDController.h"
 #include "MagneticSensor.h"
-#include "SRampGenerator.h"
 #include "Car.h"
 
 #define _USE_MATH_DEFINES
 #define JS_PATH "/dev/input/js0"
 #define MS_PATH1 "/dev/ttyAMA1"
 #define MS_PATH2 "/dev/ttyAMA2"
-#define MAX_SPEED (1000)
-#define S_RAMP_TIME (80)
 
 enum OperationMode
 {
@@ -37,7 +34,6 @@ std::thread *joyStickReceive_t;
 bool isJoyStickAlive = false;
 
 //Car Variables
-SRampGenerator rampGenerator;
 Car *dejaVu;
 float setV = 0;
 float setV_prev = 0;
@@ -97,13 +93,10 @@ int main(int argc, char **argv)
                 headingPID.clear();
                 linearPID.clear();
                 mode = Auto;
-                rampGenerator.generateVelocityProfile(dir * MAX_SPEED, S_RAMP_TIME);
             }
             else
             {
-                setV = rampGenerator.getV();
-                dejaVu->setParams(setV, 0);
-                usleep(10000);
+                dejaVu->setParams(-dir * 100, 0);
             }
             break;
         }
@@ -223,27 +216,51 @@ void followTrack(void)
     float angle, d;
     float setV_prev = 0;
     if (calcPose(angle, d))
-    {
-        setV = rampGenerator.getV();
-        //setV = linearPID.calculate(dir * 1000, setV_prev);
+    {    
+        setV = linearPID.calculate(dir * 1000, setV_prev);
         //setW = offsetPID.calculate(headingPID.calculate(0, angle), d);
         setW = dir * headingPID.calculate(offsetPID.calculate(0, d), dir * angle);
-
+        
         //setW = offsetPID.calculate(0, d);
         //setW = headingPID.calculate(0, angle);
     }
     else
     {
-        setW = 0;
-        rampGenerator.generateVelocityProfile(0, 100);
-        for (size_t i = 0; i < rampGenerator.getTotalTimeFrames(); i++)
+        if (setV > 0)
         {
-            setV = rampGenerator.getV();
-            dejaVu->setParams(setV, setW);
-            usleep(10000);
+            setW = 0;
+            for (; setV > 0; setV -= 10)
+            {
+                dejaVu->setParams(setV, setW);
+                usleep(10000);
+            }
+            if (setV < 0)
+            {
+                setV = 0;
+                dejaVu->setParams(0, 0);
+            }
+            mode = WaitingTrack;
         }
-        mode = WaitingTrack;
-        rampGenerator.generateVelocityProfile(0, -dir * 200, 50);
+        else if (setV < 0)
+        {
+            setW = 0;
+            for (; setV < 0; setV += 10)
+            {
+                dejaVu->setParams(setV, setW);
+                usleep(10000);
+            }
+            if (setV > 0)
+            {
+                setV = 0;
+                dejaVu->setParams(0, 0);
+            }
+            mode = WaitingTrack;
+        }
+        else
+        {
+            setV = 0;
+            setW = 0;
+        }
     }
     dejaVu->setParams(setV, setW);
     setV_prev = setV;
@@ -281,7 +298,6 @@ void joyStickReceive(void)
                     offsetPID.clear();
                     headingPID.clear();
                     linearPID.clear();
-                    rampGenerator.generateVelocityProfile(0, dir * MAX_SPEED, S_RAMP_TIME);
                     setV_prev = 0;
                 }
                 else if (event.number == 0)
