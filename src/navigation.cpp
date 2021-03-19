@@ -16,7 +16,7 @@
 #define MS_PATH1 "/dev/ttyAMA1"
 #define MS_PATH2 "/dev/ttyAMA2"
 #define MAX_SPEED (1000)
-#define S_RAMP_TIME (80)
+#define S_RAMP_TIME (150)
 
 enum OperationMode
 {
@@ -26,6 +26,9 @@ enum OperationMode
     WaitingTrack,
 };
 OperationMode mode = None;
+
+std::thread *showStatus_t;
+float angle_status, d_status;
 
 //Magnetic Sensor Variables
 MagneticSensor *magSen1, *magSen2;
@@ -45,13 +48,14 @@ float setW = 0.0f;
 int dir = 1;
 
 //PID Controllers
-PIDContorller headingPID(0.9, 0, 3, 3, -3, 0.2);
+PIDContorller headingPID(0.9, 0, 13, 3, -3, 0.2);
 PIDContorller offsetPID(0.02, 0.0, 0.02, 3, -3, 0.2);
 PIDContorller linearPID(5, 0.0, 0.00, 1000, -1000, 10);
 
 int calcPose(float &angle, float &d);
 void followTrack(void);
 void joyStickReceive(void);
+void showStatus(void);
 
 int main(int argc, char **argv)
 {
@@ -68,6 +72,8 @@ int main(int argc, char **argv)
     isJoyStickAlive = true;
     joyStickReceive_t = new std::thread(joyStickReceive);
 
+    showStatus_t = new std::thread(showStatus);
+
     while (1)
     {
         if (isJoyStickAlive == false)
@@ -80,11 +86,10 @@ int main(int argc, char **argv)
         case None:
             break;
         case Manual:
-            float a, b;
-            calcPose(a, b);
-            system("clear");
-            printf("Angle = %3.2f, d = %3.2f\n", a / M_PI * 180.0f, b);
-            printf("width = %3d\n", magSen1->getTrackWidth());
+            calcPose(angle_status, d_status);
+            // system("clear");
+            // printf("Angle = %3.2f, d = %3.2f\n", a / M_PI * 180.0f, b);
+            // printf("width = %3d\n", magSen1->getTrackWidth());
             break;
         case Auto:
             followTrack();
@@ -134,7 +139,7 @@ int calcPose(float &angle, float &d)
         {
             offset1 = magSen1->getTrackOffset(0);
         }
-        if (magSen1->getTrackCount() == 2)
+        if (magSen2->getTrackCount() == 2)
         {
             offset2 = abs(magSen2->getTrackOffset(0)) < abs(magSen2->getTrackOffset(1)) ? magSen2->getTrackOffset(0) : magSen2->getTrackOffset(1);
         }
@@ -219,11 +224,13 @@ int calcPose(float &angle, float &d)
 
 void followTrack(void)
 {
-    system("clear");
+    // system("clear");
     float angle, d;
     float setV_prev = 0;
     if (calcPose(angle, d))
     {
+        angle_status = angle;
+        d_status = d;
         setV = rampGenerator.getV();
         //setV = linearPID.calculate(dir * 1000, setV_prev);
         //setW = offsetPID.calculate(headingPID.calculate(0, angle), d);
@@ -243,12 +250,12 @@ void followTrack(void)
             usleep(10000);
         }
         mode = WaitingTrack;
-        rampGenerator.generateVelocityProfile(0, -dir * 200, 50);
+        rampGenerator.generateVelocityProfile(0, -dir * 200, 80);
     }
     dejaVu->setParams(setV, setW);
     setV_prev = setV;
-    printf("Angle = %3.2f, d = %3.2f\n", angle / M_PI * 180.0f, d);
-    printf("V = %3.2f\tW = %3.2f\n", setV, setW);
+    // printf("Angle = %3.2f, d = %3.2f\n", angle / M_PI * 180.0f, d);
+    // printf("V = %3.2f\tW = %3.2f\n", setV, setW);
     usleep(10000);
 }
 
@@ -286,6 +293,7 @@ void joyStickReceive(void)
                 }
                 else if (event.number == 0)
                 {
+                    isJoyStickAlive = false;
                     exit(0);
                 }
                 else if (event.number == 4)
@@ -340,4 +348,15 @@ void joyStickReceive(void)
     isJoyStickAlive = false;
 
     close(js);
+}
+
+void showStatus(void)
+{
+    while (isJoyStickAlive)
+    {
+        system("clear");
+        printf("V = %3.2f\tW = %3.2f\n", setV, setW);
+        printf("Angle = %3.2f, d = %3.2f\n", angle_status / M_PI * 180.0f, d_status);
+        usleep(100000);
+    }
 }

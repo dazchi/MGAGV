@@ -8,7 +8,7 @@
 class SRampGenerator
 {
 private:
-    std::vector<float> *commandV;
+    float *commandV = NULL;
     float lastV = 0;
     uint16_t index = 0;
     uint16_t totalTimeFrames = 0;

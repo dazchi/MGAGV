@@ -2,17 +2,18 @@
 
 SRampGenerator::SRampGenerator(/* args */)
 {
-    commandV = new std::vector<float>;
+    commandV = new float[1];
 }
 
 SRampGenerator::~SRampGenerator()
 {
-    delete commandV;
+    delete[] commandV;
 }
 
 void SRampGenerator::generateVelocityProfile(const int16_t startV, const int16_t targetV, const uint16_t timeFrames)
 {
     float absJ;
+    float *A, *J;
 
     if ((timeFrames % 3) != 0)
     {
@@ -24,11 +25,11 @@ void SRampGenerator::generateVelocityProfile(const int16_t startV, const int16_t
     }
 
     absJ = (9.0f / 2.0f) * (targetV - startV) / powf(totalTimeFrames, 2);
-    delete commandV;
-    commandV = new std::vector<float>((totalTimeFrames * sizeof(float)) + 1);
+    delete[] commandV;
+    commandV = new float[totalTimeFrames + 1];
 
-    std::vector<float> A(totalTimeFrames * sizeof(float));
-    std::vector<float> J(totalTimeFrames * sizeof(float));
+    A = new float[totalTimeFrames];
+    J = new float[totalTimeFrames];
 
     for (size_t i = 0; i < totalTimeFrames / 3; i++)
     {
@@ -43,26 +44,29 @@ void SRampGenerator::generateVelocityProfile(const int16_t startV, const int16_t
         J[i] = -absJ;
     }
 
-    (*commandV)[0] = startV;
+    commandV[0] = startV;
     A[0] = 0.0f;
     for (size_t i = 1; i < totalTimeFrames; i++)
     {
         A[i] = A[i - 1] + J[i - 1];
-        (*commandV)[i] = (*commandV)[i - 1] + A[i - 1] + 0.5f * J[i - 1];
+        commandV[i] = commandV[i - 1] + A[i - 1] + 0.5f * J[i - 1];
     }
-    (*commandV)[totalTimeFrames] = targetV;
+    commandV[totalTimeFrames] = targetV;
 
     // printf("T\tV\t\tA\t\tJ\t\t\n");
     // for (size_t i = 0; i < totalTimeFrames + 1; i++)
     // {
     //     printf("%d\t%f\t%f\t%f\n", i, (*commandV)[i], A[i], J[i]);
     // }
+    delete[] A;
+    delete[] J;
     index = 0;
 }
 
 void SRampGenerator::generateVelocityProfile(const int16_t targetV, const uint16_t timeFrames)
 {
-    float absJ;
+   float absJ;
+    float *A, *J;
 
     if ((timeFrames % 3) != 0)
     {
@@ -74,11 +78,11 @@ void SRampGenerator::generateVelocityProfile(const int16_t targetV, const uint16
     }
 
     absJ = (9.0f / 2.0f) * (targetV - lastV) / powf(totalTimeFrames, 2);
-    delete commandV;
-    commandV = new std::vector<float>((totalTimeFrames * sizeof(float)) + 1);
+    delete[] commandV;
+    commandV = new float[totalTimeFrames + 1];
 
-    std::vector<float> A(totalTimeFrames * sizeof(float));
-    std::vector<float> J(totalTimeFrames * sizeof(float));
+    A = new float[totalTimeFrames];
+    J = new float[totalTimeFrames];
 
     for (size_t i = 0; i < totalTimeFrames / 3; i++)
     {
@@ -93,20 +97,22 @@ void SRampGenerator::generateVelocityProfile(const int16_t targetV, const uint16
         J[i] = -absJ;
     }
 
-    (*commandV)[0] = lastV;
+    commandV[0] = lastV;
     A[0] = 0.0f;
     for (size_t i = 1; i < totalTimeFrames; i++)
     {
         A[i] = A[i - 1] + J[i - 1];
-        (*commandV)[i] = (*commandV)[i - 1] + A[i - 1] + 0.5f * J[i - 1];
+        commandV[i] = commandV[i - 1] + A[i - 1] + 0.5f * J[i - 1];
     }
-    (*commandV)[totalTimeFrames] = targetV;
+    commandV[totalTimeFrames] = targetV;
 
     // printf("T\tV\t\tA\t\tJ\t\t\n");
     // for (size_t i = 0; i < totalTimeFrames + 1; i++)
     // {
     //     printf("%d\t%f\t%f\t%f\n", i, (*commandV)[i], A[i], J[i]);
     // }
+    delete[] A;
+    delete[] J;
     index = 0;
 }
 
@@ -114,20 +120,20 @@ float SRampGenerator::getVf(void)
 {
     if (index <= totalTimeFrames)
     {
-        lastV = (int16_t)((*commandV)[index++]);
+        lastV = (int16_t)(commandV[index++]);
         return lastV;
     }
-    return (*commandV)[totalTimeFrames];
+    return commandV[totalTimeFrames];
 }
 
 int16_t SRampGenerator::getV(void)
 {
     if (index <= totalTimeFrames)
     {
-        lastV = (int16_t)((*commandV)[index++]);
-        return lastV;
+        lastV = commandV[index++];
+        return (int16_t)lastV;
     }
-    return (int16_t)((*commandV)[totalTimeFrames]);
+    return (int16_t)commandV[totalTimeFrames];
 }
 
 uint16_t SRampGenerator::getTotalTimeFrames(void)

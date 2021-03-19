@@ -10,6 +10,7 @@
 #include "JoyStick.h"
 #include "QRCode.h"
 #include "../lib/SRampGenerator.h"
+#include "../lib/MagneticSensor.h"
 
 #define JS_PATH "/dev/input/js0"
 
@@ -176,16 +177,32 @@ int main(int argc, char **argv)
     //     usleep(10000);
     // }
 
-    //SRampGenerator(1350, -1350, 100);
-    SRampGenerator rampGenerator;
-    rampGenerator.generateVelocityProfile(1350,100);
-    for (size_t i = 0; i < 50; i++)
+    MagneticSensor magSen1("/dev/ttyAMA1");
+
+    // while (1)
+    // {
+    //     if (magSen1.getTrackCount() > 0)
+    //     {
+    //         if (magSen1.getTrackCount() == 2)
+    //         {
+    //             printf("of1 = %d\tof2 = %d\n", magSen1.getTrackOffset(0), magSen1.getTrackOffset(1));
+    //         }
+    //         else
+    //         {
+    //             printf("of1 = %d\n", magSen1.getTrackOffset(0));
+    //         }
+    //     }
+    //     usleep(500000);
+    // }
+
+    SRampGenerator SRG;
+    SRG.generateVelocityProfile(1000,100);
+    for (size_t i = 0; i < 102; i++)
     {
-        rampGenerator.getV();  
+        printf("%d \n",SRG.getV());
     }
     
 
-    rampGenerator.generateVelocityProfile(1000,2000,100);
 
     return 0;
 }
