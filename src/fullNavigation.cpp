@@ -12,13 +12,12 @@
 #include "QRCode.h"
 #include "Car.h"
 
-
 #define _USE_MATH_DEFINES
 #define JS_PATH "/dev/input/js0"
 #define MS_PATH1 "/dev/ttyAMA1"
 #define MS_PATH2 "/dev/ttyAMA2"
 #define MAX_SPEED (1000)
-#define S_RAMP_TIME (80)
+#define S_RAMP_TIME (150)
 
 enum OperationMode
 {
@@ -29,11 +28,18 @@ enum OperationMode
 };
 OperationMode mode = None;
 
+bool slowFlag = false;
+bool qrLocalizaiton = false;
+bool noStop = true;
+
+std::thread *showStatus_t;
+float angle_status, d_status;
+
 //Magnetic Sensor Variables
 MagneticSensor *magSen1, *magSen2;
 int lastOffset = 0;
 
-//QRCode Sensor Variables
+//QRCode Variables
 QRCode *myQR;
 int16_t xpos, ypos, qrAngle;
 uint32_t tagNum;
@@ -47,18 +53,19 @@ bool isJoyStickAlive = false;
 SRampGenerator rampGenerator;
 Car *dejaVu;
 float setV = 0;
+float setV_prev = 0;
 float setW = 0.0f;
 int dir = 1;
 
 //PID Controllers
-PIDContorller headingPID(0.9, 0, 6, 3, -3, 0.2);
+PIDContorller headingPID(0.9, 0, 9, 3, -3, 0.2);
 PIDContorller offsetPID(0.02, 0.0, 0.02, 3, -3, 0.2);
-PIDContorller linearPID(5, 0.0, 0.00, 1000, -1000, 10);
+PIDContorller linearPID(2, 0.003, 0.00, 1000, -1000, 10);
 
 int calcPose(float &angle, float &d);
 void followTrack(void);
 void joyStickReceive(void);
-void goAuto(void);
+void showStatus(void);
 
 int main(int argc, char **argv)
 {
@@ -76,6 +83,8 @@ int main(int argc, char **argv)
     isJoyStickAlive = true;
     joyStickReceive_t = new std::thread(joyStickReceive);
 
+    showStatus_t = new std::thread(showStatus);
+
     while (1)
     {
         if (isJoyStickAlive == false)
@@ -88,11 +97,10 @@ int main(int argc, char **argv)
         case None:
             break;
         case Manual:
-            float a, b;
-            calcPose(a, b);
-            system("clear");
-            printf("Angle = %3.2f, d = %3.2f\n", a / M_PI * 180.0f, b);
-            printf("width = %3d\n", magSen1->getTrackWidth());
+            calcPose(angle_status, d_status);
+            // system("clear");
+            // printf("Angle = %3.2f, d = %3.2f\n", a / M_PI * 180.0f, b);
+            // printf("width = %3d\n", magSen1->getTrackWidth());
             break;
         case Auto:
             followTrack();
@@ -101,7 +109,11 @@ int main(int argc, char **argv)
             if ((magSen1->getTrackCount() > 0) && (magSen2->getTrackCount() > 0))
             {
                 dir *= -1;
-                goAuto();
+                offsetPID.clear();
+                headingPID.clear();
+                linearPID.clear();
+                mode = Auto;
+                rampGenerator.generateVelocityProfile(dir * MAX_SPEED, S_RAMP_TIME);
             }
             else
             {
@@ -138,7 +150,7 @@ int calcPose(float &angle, float &d)
         {
             offset1 = magSen1->getTrackOffset(0);
         }
-        if (magSen1->getTrackCount() == 2)
+        if (magSen2->getTrackCount() == 2)
         {
             offset2 = abs(magSen2->getTrackOffset(0)) < abs(magSen2->getTrackOffset(1)) ? magSen2->getTrackOffset(0) : magSen2->getTrackOffset(1);
         }
@@ -223,23 +235,89 @@ int calcPose(float &angle, float &d)
 
 void followTrack(void)
 {
-    //system("clear");
+    // system("clear");
     float angle, d;
     float setV_prev = 0;
+    int qrDetected = 0;
     if (calcPose(angle, d))
     {
-        setV = rampGenerator.getV();
-        //setV = linearPID.calculate(dir * 1000, setV_prev);
-        //setW = offsetPID.calculate(headingPID.calculate(0, angle), d);
-        setW = dir * headingPID.calculate(offsetPID.calculate(0, d), dir * angle);
+        angle_status = angle;
+        d_status = d;
+        qrDetected = myQR->getInformation(xpos, ypos, qrAngle, tagNum);
+        if (qrDetected && (noStop == false))
+        {
+            if ((tagNum == 2) && (slowFlag == false) && (setV < 0))
+            {
+                slowFlag = true;
+                rampGenerator.generateVelocityProfile(dir * 200, 75);
+            }
+            if ((tagNum == 3) && (slowFlag == false) && (setV > 0))
+            {
+                slowFlag = true;
+                rampGenerator.generateVelocityProfile(dir * 200, 75);
+            }
 
+            if ((tagNum == 1) && (slowFlag == true))
+            {
+                qrLocalizaiton = true;
+            }
+            if ((tagNum == 4) && (slowFlag == true))
+            {
+                qrLocalizaiton = true;
+            }
+        }
+
+        if (qrLocalizaiton)
+        {
+            if (qrDetected)
+            {
+                setV = linearPID.calculate(-xpos);
+                setW = dir * headingPID.calculate(0, dir * angle);
+                if ((abs(xpos) < 3) && (abs(setV) < 10))
+                {
+                    sleep(3);
+                    mode = Auto;
+                    offsetPID.clear();
+                    headingPID.clear();
+                    linearPID.clear();
+                    if ((qrLocalizaiton == true) && (tagNum == 1))
+                    {
+                        dir *= -1;
+                    }
+                    rampGenerator.generateVelocityProfile(0, dir * MAX_SPEED, S_RAMP_TIME);
+                    setV_prev = 0;
+                    qrLocalizaiton = false;
+                    slowFlag = false;
+                }
+            }
+            else
+            {
+                setV = 0;
+                setW = 0;
+            }
+        }
+        else
+        {
+            setV = rampGenerator.getV();
+            setW = dir * headingPID.calculate(offsetPID.calculate(0, d), dir * angle);
+        }
+
+        // if (qrLocalizaiton)
+        // {
+        //     setV = linearPID.calculate(-xpos);
+        // }
+        // else
+        // {
+        //     setV = rampGenerator.getV();
+        //     setW = dir * headingPID.calculate(offsetPID.calculate(0, d), dir * angle);
+        // }
         //setW = offsetPID.calculate(0, d);
         //setW = headingPID.calculate(0, angle);
     }
     else
     {
         setW = 0;
-        rampGenerator.generateVelocityProfile(0, 100);
+        rampGenerator.generateVelocityProfile(0, 110);
         for (size_t i = 0; i < rampGenerator.getTotalTimeFrames(); i++)
         {
             setV = rampGenerator.getV();
@@ -247,15 +325,13 @@ void followTrack(void)
             usleep(10000);
         }
         mode = WaitingTrack;
-        rampGenerator.generateVelocityProfile(0, -dir * 200, 50);
+        slowFlag = false;
+        rampGenerator.generateVelocityProfile(0, -dir * 500, 80);
     }
-    dejaVu->setParams(setV, setW);    
-    //printf("Angle = %3.2f, d = %3.2f\n", angle / M_PI * 180.0f, d);
-    //printf("V = %3.2f\tW = %3.2f\n", setV, setW);
-    if (myQR->getInformation(xpos, ypos, qrAngle, tagNum))
-    {
-        printf("X = %d, Y = %d, tagNum = %d\n", xpos, ypos, tagNum);
-    }
+    dejaVu->setParams(setV, setW);
+    setV_prev = setV;
+    // printf("Angle = %3.2f, d = %3.2f\n", angle / M_PI * 180.0f, d);
+    // printf("V = %3.2f\tW = %3.2f\n", setV, setW);
     usleep(10000);
 }
 
@@ -283,10 +359,23 @@ void joyStickReceive(void)
                 }
                 else if (event.number == 9)
                 {
-                    goAuto();
+                    printf("Auto Mode\n");
+                    mode = Auto;
+                    offsetPID.clear();
+                    headingPID.clear();
+                    linearPID.clear();
+                    if ((qrLocalizaiton == true) && (tagNum == 1))
+                    {
+                        dir *= -1;
+                    }
+                    rampGenerator.generateVelocityProfile(0, dir * MAX_SPEED, S_RAMP_TIME);
+                    setV_prev = 0;
+                    qrLocalizaiton = false;
+                    slowFlag = false;
                 }
                 else if (event.number == 0)
                 {
+                    isJoyStickAlive = false;
                     exit(0);
                 }
                 else if (event.number == 4)
@@ -303,6 +392,10 @@ void joyStickReceive(void)
                 {
                     dir *= -1;
                     printf("DIR CHANGED!\n");
+                }
+                else if (event.number == 1)
+                {
+                    noStop ^= 1;
                 }
             }
             break;
@@ -343,12 +436,14 @@ void joyStickReceive(void)
     close(js);
 }
 
-void goAuto(void)
+void showStatus(void)
 {
-    printf("Auto Mode\n");
-    mode = Auto;
-    offsetPID.clear();
-    headingPID.clear();
-    linearPID.clear();
-    rampGenerator.generateVelocityProfile(dir * MAX_SPEED, S_RAMP_TIME);
+    while (isJoyStickAlive)
+    {
+        system("clear");
+        printf("V = %3.2f\tW = %3.2f\n", setV, setW);
+        printf("Angle = %3.2f, d = %3.2f\n", angle_status / M_PI * 180.0f, d_status);
+        printf("X: %d\tY: %d\tAngle: %d\tTagNum: %d\n", xpos, ypos, qrAngle, tagNum);
+        usleep(100000);
+    }
 }
