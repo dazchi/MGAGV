@@ -17,7 +17,7 @@
 #define MS_PATH1 "/dev/ttyAMA1"
 #define MS_PATH2 "/dev/ttyAMA2"
 #define MAX_SPEED (1000)
-#define S_RAMP_TIME (50)
+#define S_RAMP_TIME (75)
 
 enum OperationMode
 {
@@ -54,7 +54,6 @@ bool isJoyStickAlive = false;
 SRampGenerator rampGenerator;
 Car *dejaVu;
 float setV = 0;
-float setV_prev = 0;
 float setW = 0.0f;
 int dir = 1;
 
@@ -283,7 +282,6 @@ void followTrack(void)
 {
     // system("clear");
     float angle, d;
-    float setV_prev = 0;
     int qrDetected = 0;
     if (calcPose(angle, d))
     {
@@ -334,7 +332,6 @@ void followTrack(void)
                         dir *= -1;
                     }
                     rampGenerator.generateVelocityProfile(0, dir * MAX_SPEED, S_RAMP_TIME);
-                    setV_prev = 0;
                     qrLocalizaiton = false;
                     slowFlag = false;
                 }
@@ -366,19 +363,21 @@ void followTrack(void)
     else
     {
         setW = 0;
-        rampGenerator.generateVelocityProfile(0, 100);
-        for (size_t i = 0; i < rampGenerator.getTotalTimeFrames(); i++)
+        if (abs(setV) > 0)
         {
-            setV = rampGenerator.getV();
-            dejaVu->setParams(setV, setW);
-            usleep(10000);
+            mode = WaitingTrack;
+            slowFlag = false;
+            rampGenerator.generateVelocityProfile(0, 100);
+            for (size_t i = 0; i < rampGenerator.getTotalTimeFrames(); i++)
+            {
+                setV = rampGenerator.getV();
+                dejaVu->setParams(setV, setW);
+                usleep(10000);
+            }
+            rampGenerator.generateVelocityProfile(0, -dir * 500, 80);
         }
-        mode = WaitingTrack;
-        slowFlag = false;
-        rampGenerator.generateVelocityProfile(0, -dir * 500, 80);
     }
     dejaVu->setParams(setV, setW);
-    setV_prev = setV;
     // printf("Angle = %3.2f, d = %3.2f\n", angle / M_PI * 180.0f, d);
     // printf("V = %3.2f\tW = %3.2f\n", setV, setW);
     usleep(10000);
@@ -410,6 +409,9 @@ void joyStickReceive(void)
                 {
                     printf("Auto Mode\n");
                     mode = Auto;
+                    setV = 0;
+                    setW = 0;
+                    dejaVu->setParams(setV, setW);
                     offsetPID.clear();
                     headingPID.clear();
                     linearPID.clear();
@@ -418,7 +420,6 @@ void joyStickReceive(void)
                         dir *= -1;
                     }
                     rampGenerator.generateVelocityProfile(0, dir * MAX_SPEED, S_RAMP_TIME);
-                    setV_prev = 0;
                     qrLocalizaiton = false;
                     slowFlag = false;
                 }

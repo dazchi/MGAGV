@@ -21,13 +21,15 @@ Car::Car(/* args */)
         return;
     }
 
+    modbus_write_register(modbus_ctx, 0x203A, 0); //Set all velocity to 0
+    usleep(SEND_DELAY);
     modbus_write_register(modbus_ctx, 0x2032, 0x0003); //Set all drivers to velocity mode
     usleep(SEND_DELAY);
     modbus_write_register(modbus_ctx, 0x2031, 0x0008); //Enable all drivers
     usleep(SEND_DELAY);
-    modbus_write_register(modbus_ctx, 0x2037, 0); //Enable all drivers
+    modbus_write_register(modbus_ctx, 0x2037, 0); //Set S Ramp accelration time to 0
     usleep(SEND_DELAY);
-    modbus_write_register(modbus_ctx, 0x2038, 0); //Enable all drivers
+    modbus_write_register(modbus_ctx, 0x2038, 0); //Set S Ramp deccelration time to 0
     usleep(SEND_DELAY);
 
     carComm_t = new std::thread(&Car::carComm, this);

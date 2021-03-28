@@ -120,7 +120,7 @@ float SRampGenerator::getVf(void)
 {
     if (index <= totalTimeFrames)
     {
-        lastV = (int16_t)(commandV[index++]);
+        lastV = commandV[index++];
         return lastV;
     }
     return commandV[totalTimeFrames];
