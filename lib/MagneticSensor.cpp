@@ -46,7 +46,7 @@ void MagneticSensor::receivePacket(void)
                         // printf("Track Offset = %d\n", (rxBuff[1].trackOffset.sign ? -1 : 1) * rxBuff[1].trackOffset.offset << 1);
                         //printf("Track Width = %d\n", (((rxBuff[2].trackWidth & 0xC0) >> 2) + (rxBuff[2].trackWidth - 0x29)) << 1);
                         trackOffset[0] = (rxBuff[1].trackOffset.sign ? -1 : 1) * rxBuff[1].trackOffset.offset << 1;
-                        trackWidth = (((rxBuff[2].trackWidth & 0xC0) >> 2) + (rxBuff[2].trackWidth - 0x29)) << 1;
+                        trackWidth = (((rxBuff[2].trackWidth & 0xC0) >> 2) + (rxBuff[2].trackWidth & 0x3F - 41)) << 1;                        
                         break;
                     case 2:
                         //printf("Track 1: Offset = %d\n", (rxBuff[1].trackOffset.sign ? -1 : 1) * rxBuff[1].trackOffset.offset << 1);

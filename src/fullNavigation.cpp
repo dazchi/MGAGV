@@ -17,7 +17,7 @@
 #define MS_PATH1 "/dev/ttyAMA1"
 #define MS_PATH2 "/dev/ttyAMA2"
 #define MAX_SPEED (1000)
-#define S_RAMP_TIME (150)
+#define S_RAMP_TIME (50)
 
 enum OperationMode
 {
@@ -38,6 +38,7 @@ float angle_status, d_status;
 //Magnetic Sensor Variables
 MagneticSensor *magSen1, *magSen2;
 int lastOffset = 0;
+int forkSelect = 0; //Left: 0, Right: 1
 
 //QRCode Variables
 QRCode *myQR;
@@ -58,8 +59,8 @@ float setW = 0.0f;
 int dir = 1;
 
 //PID Controllers
-PIDContorller headingPID(0.9, 0, 9, 3, -3, 0.2);
-PIDContorller offsetPID(0.02, 0.0, 0.02, 3, -3, 0.2);
+PIDContorller headingPID(2, 0.0, 10, 3, -3, 0.3);
+PIDContorller offsetPID(0.01, 0.0, 0.005, 3, -3, 0.3);
 PIDContorller linearPID(2, 0.003, 0.00, 1000, -1000, 10);
 
 int calcPose(float &angle, float &d);
@@ -139,32 +140,77 @@ int calcPose(float &angle, float &d)
     if (magSen1->getTrackCount() >= 1 && magSen2->getTrackCount() >= 1)
     {
         int16_t offset1, offset2;
-        int16_t offset1_prev, offset2_prev;
-        // float angle;
-        // float d;
-        if (magSen1->getTrackCount() == 2)
+
+        if (forkSelect)
         {
-            offset1 = abs(magSen1->getTrackOffset(0)) < abs(magSen1->getTrackOffset(1)) ? magSen1->getTrackOffset(0) : magSen1->getTrackOffset(1);
+            if (magSen1->getTrackCount() == 2)
+            {
+                offset1 = magSen1->getTrackOffset(1);
+            }
+            else
+            {
+                if (magSen1->getTrackWidth() > 32)
+                {
+                    offset1 = std::max(magSen1->getTrackOffset(0), magSen1->getTrackOffset(0) + (magSen1->getTrackWidth() / 2) - 15);
+                }
+                else
+                {
+                    offset1 = magSen1->getTrackOffset(0);
+                }
+            }
+            if (magSen2->getTrackCount() == 2)
+            {
+                offset2 = magSen2->getTrackOffset(0);
+            }
+            else
+            {
+                if (magSen2->getTrackWidth() > 32)
+                {
+                    offset2 = std::min(magSen2->getTrackOffset(0), magSen2->getTrackOffset(0) - (magSen2->getTrackWidth() / 2) + 15);
+                }
+                else
+                {
+                    offset2 = magSen2->getTrackOffset(0);
+                }
+            }
         }
         else
         {
-            offset1 = magSen1->getTrackOffset(0);
-        }
-        if (magSen2->getTrackCount() == 2)
-        {
-            offset2 = abs(magSen2->getTrackOffset(0)) < abs(magSen2->getTrackOffset(1)) ? magSen2->getTrackOffset(0) : magSen2->getTrackOffset(1);
-        }
-        else
-        {
-            offset2 = magSen2->getTrackOffset(0);
+            if (magSen1->getTrackCount() == 2)
+            {
+                offset1 = magSen1->getTrackOffset(0);
+            }
+            else
+            {
+                if (magSen1->getTrackWidth() > 32)
+                {
+                    offset1 = std::min(magSen1->getTrackOffset(0), magSen1->getTrackOffset(0) - (magSen1->getTrackWidth() / 2) + 15);
+                }
+                else
+                {
+                    offset1 = magSen1->getTrackOffset(0);
+                }
+            }
+            if (magSen2->getTrackCount() == 2)
+            {
+                offset2 = magSen2->getTrackOffset(1);
+            }
+            else
+            {
+                if (magSen2->getTrackWidth() > 32)
+                {
+                    offset2 = std::max(magSen2->getTrackOffset(0), magSen2->getTrackOffset(0) + (magSen2->getTrackWidth() / 2) - 15);
+                }
+                else
+                {
+                    offset2 = magSen2->getTrackOffset(0);
+                }
+            }
         }
 
         // offset1 = magSen1->getTrackOffset(0);
         // offset2 = magSen2->getTrackOffset(0);
 
-        offset1_prev = offset1;
-        offset2_prev = offset2;
-        //printf("off1 = %3d\t off2 = %3d\n", offset1, offset2);
         if ((offset1 == 0) || (offset2 == 0))
         {
             if (offset1 == offset2)
@@ -320,7 +366,7 @@ void followTrack(void)
     else
     {
         setW = 0;
-        rampGenerator.generateVelocityProfile(0, 110);
+        rampGenerator.generateVelocityProfile(0, 100);
         for (size_t i = 0; i < rampGenerator.getTotalTimeFrames(); i++)
         {
             setV = rampGenerator.getV();
@@ -401,6 +447,18 @@ void joyStickReceive(void)
                 {
                     noStop ^= 1;
                 }
+                else if (event.number == 2)
+                {
+                    forkSelect ^= 1;
+                    if (forkSelect)
+                    {
+                        printf("ForkSelect = Right");
+                    }
+                    else
+                    {
+                        printf("ForkSelect = Left");
+                    }
+                }
             }
             break;
         case JS_EVENT_AXIS:
@@ -448,6 +506,8 @@ void showStatus(void)
         printf("V = %3.2f\tW = %3.2f\n", setV, setW);
         printf("Angle = %3.2f, d = %3.2f\n", angle_status / M_PI * 180.0f, d_status);
         printf("X: %d\tY: %d\tAngle: %d\tTagNum: %d\n", xpos, ypos, qrAngle, tagNum);
+        printf("MagSen1: of1 = %d\tof2 = %d\t width = %d\n", magSen1->getTrackOffset(0), magSen1->getTrackOffset(1), magSen1->getTrackWidth());
+        printf("MagSen2: of1 = %d\tof2 = %d\t width = %d\n", magSen2->getTrackOffset(0), magSen2->getTrackOffset(1), magSen2->getTrackWidth());
         usleep(100000);
     }
 }
