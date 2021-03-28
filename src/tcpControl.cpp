@@ -7,12 +7,14 @@
 #include <arpa/inet.h>
 
 #include "Car.h"
+#include "SRampGenerator.h"
 
 #define MAX_BUFFER_SIZE (64)
 
 float setV = 0;
 float setW = 0.0f;
 Car *myCar;
+SRampGenerator rampGenerator;
 
 //TCP Socket Vars
 int sock0;
@@ -22,6 +24,8 @@ socklen_t len;
 int sock_client;
 std::thread *handleClientMessage_t;
 bool closeFlag = false;
+bool stopFlag = false;
+int heartbeatTimeout = 0;
 
 void handleClientMessage(void);
 
@@ -58,8 +62,30 @@ int main(int argc, char **argv)
     // printf("\t[Info] Say hello back...\n");
     // write(sock_client, "HELLO\n", 6);
     while (!closeFlag)
-        ;
-
+    {
+        if (stopFlag)
+        {
+            int16_t setV_ramp = rampGenerator.getV();
+            printf("%d\n", setV_ramp);
+            myCar->setParams(setV_ramp, 0);
+            if (setV_ramp == 0)
+            {
+                stopFlag = false;
+                puts("stop flag  stopped");
+            }
+        }
+        else
+        {
+            myCar->setParams(setV, setW);
+        }
+        if (heartbeatTimeout > 10)
+        {
+            setV = 0;
+            setW = 0;
+        }
+        heartbeatTimeout++;
+        usleep(10000);
+    }
     closeFlag = true;
     handleClientMessage_t->join();
 
@@ -81,10 +107,18 @@ void handleClientMessage(void)
             float VBAT = myCar->getDriverVoltage();
             v = *((int16_t *)(&rxBuffer[0]));
             w = *((float *)(&rxBuffer[2]));
-            myCar->setParams(v, w);
+            if (abs(setV - v) > 50)
+            {
+                stopFlag = true;
+                rampGenerator.generateVelocityProfile(setV, 0, 100);
+                puts("stop flag");
+            }
+            setV = v;
+            setW = w;
             // printf("\n");
-            printf("V = %d\tW = %f\nVBAT = %2.2f\n", v, w, VBAT);
-            write(sock_client, (char*)(&VBAT), 4);
+            //printf("V = %d\tW = %f\nVBAT = %2.2f\n", v, w, VBAT);
+            write(sock_client, (char *)(&VBAT), 4);
+            heartbeatTimeout = 0;
         }
         else
         {

@@ -249,12 +249,12 @@ void followTrack(void)
             if ((tagNum == 2) && (slowFlag == false) && (setV < 0))
             {
                 slowFlag = true;
-                rampGenerator.generateVelocityProfile(dir * 200, 75);
+                rampGenerator.generateVelocityProfile(dir * 25, 100);
             }
             if ((tagNum == 3) && (slowFlag == false) && (setV > 0))
             {
                 slowFlag = true;
-                rampGenerator.generateVelocityProfile(dir * 200, 75);
+                rampGenerator.generateVelocityProfile(dir * 25, 100);
             }
 
             if ((tagNum == 1) && (slowFlag == true))
@@ -267,14 +267,17 @@ void followTrack(void)
             }
         }
 
-        if (qrLocalizaiton)
+        if (qrLocalizaiton && (abs(xpos) < 20))
         {
             if (qrDetected)
             {
                 setV = linearPID.calculate(-xpos);
                 setW = dir * headingPID.calculate(0, dir * angle);
-                if ((abs(xpos) < 3) && (abs(setV) < 10))
+                if ((abs(xpos) <= 1) && (abs(setV) < 5) && (fabs(angle) < 0.017f))
                 {
+                    setV = 0;
+                    setW = 0;
+                    dejaVu->setParams(setV, setW);
                     sleep(3);
                     mode = Auto;
                     offsetPID.clear();
@@ -376,6 +379,7 @@ void joyStickReceive(void)
                 else if (event.number == 0)
                 {
                     isJoyStickAlive = false;
+                    dejaVu->setParams(0, 0);
                     exit(0);
                 }
                 else if (event.number == 4)
