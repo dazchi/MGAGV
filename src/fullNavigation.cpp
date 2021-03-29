@@ -9,6 +9,7 @@
 #include "../lib/PIDController.h"
 #include "../lib/MagneticSensor.h"
 #include "../lib/SRampGenerator.h"
+#include "../lib/MovingAverage.h"
 #include "../lib/QRCode.h"
 #include "../lib/Car.h"
 
@@ -19,7 +20,7 @@
 #define MAX_SPEED (1000)
 #define S_RAMP_TIME (75)
 #define TRACK_WIDTH (30)     //Magnetic Track Width in mm
-#define FORK_WIDTH_THLD (40) //Fork Threshold Width in mm
+#define FORK_WIDTH_THLD (42) //Fork Threshold Width in mm
 
 enum OperationMode
 {
@@ -39,10 +40,13 @@ float angle_status, d_status;
 
 //Magnetic Sensor Variables
 MagneticSensor *magSen1, *magSen2;
-int lastOffset = 0;
-int forkSelect = 0;     //Left: 0, Right: 1
-int forkStateFront = 0; //0: No fork expected, 1:Fork Expected, 2:Passing Fork
-int forkStateRear = 0;  //0: No fork expected, 1:Fork Expected, 2:Passing Fork
+int forkSelect = 0;      //Left: 0, Right: 1
+int forkStateFront = 0;  //0: No fork expected, 1:Expecting Fork, 2:Passing Fork
+int forkStateRear = 0;   //0: No fork expected, 1:Expecting Fork, 2:Passing Fork
+int mergeStateFront = 0; //0: No merge expected, 1:Expecting Merge from Left, 2:Expecting Merge from Right
+int mergeStateRear = 0;  //0: No merge expected, 1:Expecting Merge from Left, 2:Expecting Merge from Right
+MovingAverage offsetFrontMA(100);
+MovingAverage offsetRearMA(100);
 
 //QRCode Variables
 QRCode *myQR;
@@ -118,6 +122,10 @@ int main(int argc, char **argv)
                 headingPID.clear();
                 linearPID.clear();
                 mode = Auto;
+                forkStateFront = 0;
+                forkStateRear = 0;
+                mergeStateFront = 0;
+                mergeStateRear = 0;
                 rampGenerator.generateVelocityProfile(dir * MAX_SPEED, S_RAMP_TIME);
             }
             else
@@ -157,7 +165,7 @@ int calcPose(float &angle, float &d)
     {
         int16_t offsetFront, offsetRear;
 
-        if (magSenFront->getTrackCount() == 2)
+        if (magSenFront->getTrackCount() == 2) //2 Tracks Detected at Front Sensor
         {
             if (forkStateFront > 0)
             {
@@ -166,33 +174,55 @@ int calcPose(float &angle, float &d)
             }
             else
             {
-                offsetFront = abs(magSenFront->getTrackOffset(0)) < abs(magSenFront->getTrackOffset(1)) ? magSenFront->getTrackOffset(0) : magSenFront->getTrackOffset(1);
+                if (abs(magSenFront->getTrackOffset(0) - offsetFrontMA.getCurrentAverage()) < abs(magSenFront->getTrackOffset(1) - offsetFrontMA.getCurrentAverage()))
+                {
+                    mergeStateFront = 2; //Expected Merging from Right
+                    offsetFront = magSenFront->getTrackOffset(0);
+                }
+                else
+                {
+                    mergeStateFront = 1; //Expected Merging from Left
+                    offsetFront = magSenFront->getTrackOffset(1);
+                }
             }
         }
         else
         {
             if (magSenFront->getTrackWidth() > FORK_WIDTH_THLD)
             {
-                if (forkSelect)
+                if (mergeStateFront > 0)
                 {
-                    offsetFront = std::max(magSenFront->getTrackOffset(0), magSenFront->getTrackOffset(0) + (magSenFront->getTrackWidth() / 2) - (TRACK_WIDTH / 2));
+                    if (mergeStateFront == 1) //Merging from Left
+                    {
+                        offsetFront = std::max(magSenFront->getTrackOffset(0), magSenFront->getTrackOffset(0) + (magSenFront->getTrackWidth() / 2) - (TRACK_WIDTH / 2));
+                    }
+                    else //Merging from Right
+                    {
+                        offsetFront = std::min(magSenFront->getTrackOffset(0), magSenFront->getTrackOffset(0) - (magSenFront->getTrackWidth() / 2) + (TRACK_WIDTH / 2));
+                    }
+                    // offsetFront = magSenFront->getTrackOffset(0);
                 }
                 else
                 {
-                    offsetFront = std::min(magSenFront->getTrackOffset(0), magSenFront->getTrackOffset(0) - (magSenFront->getTrackWidth() / 2) + (TRACK_WIDTH / 2));
+                    if (forkSelect)
+                    {
+                        offsetFront = std::max(magSenFront->getTrackOffset(0), magSenFront->getTrackOffset(0) + (magSenFront->getTrackWidth() / 2) - (TRACK_WIDTH / 2));
+                    }
+                    else
+                    {
+                        offsetFront = std::min(magSenFront->getTrackOffset(0), magSenFront->getTrackOffset(0) - (magSenFront->getTrackWidth() / 2) + (TRACK_WIDTH / 2));
+                    }
+                    forkStateFront = 1; //Expecting Fork
                 }
-                forkStateFront = 1;
             }
             else
             {
                 offsetFront = magSenFront->getTrackOffset(0);
-                if (forkStateFront > 0)
-                {
-                    forkStateFront = 0;
-                }
+                forkStateFront = 0;
+                mergeStateFront = 0;
             }
         }
-        if (magSenRear->getTrackCount() == 2)
+        if (magSenRear->getTrackCount() == 2) //2 Tracks Detected at Rear Sensor
         {
             if (forkStateRear > 0)
             {
@@ -201,30 +231,52 @@ int calcPose(float &angle, float &d)
             }
             else
             {
-                offsetRear = abs(magSenRear->getTrackOffset(0)) < abs(magSenRear->getTrackOffset(1)) ? magSenRear->getTrackOffset(0) : magSenRear->getTrackOffset(1);
+                if (abs(magSenRear->getTrackOffset(0) - offsetRearMA.getCurrentAverage()) < abs(magSenRear->getTrackOffset(1) - offsetRearMA.getCurrentAverage()))
+                {
+                    mergeStateRear = 1; //Expected Merging from Left
+                    offsetRear = magSenRear->getTrackOffset(0);
+                }
+                else
+                {
+                    mergeStateRear = 2; //Expected Merging from Right
+                    offsetRear = magSenRear->getTrackOffset(1);
+                }
             }
         }
         else
         {
             if (magSenRear->getTrackWidth() > FORK_WIDTH_THLD)
             {
-                if (forkSelect)
+                if (mergeStateRear > 0)
                 {
-                    offsetRear = std::min(magSenRear->getTrackOffset(0), magSenRear->getTrackOffset(0) - (magSenRear->getTrackWidth() / 2) + (TRACK_WIDTH / 2));
+                    if (mergeStateRear == 1) //Merging from Left
+                    {
+                        offsetRear = std::min(magSenRear->getTrackOffset(0), magSenRear->getTrackOffset(0) - (magSenRear->getTrackWidth() / 2) + (TRACK_WIDTH / 2));
+                    }
+                    else //Merging from Right
+                    {
+                        offsetRear = std::max(magSenRear->getTrackOffset(0), magSenRear->getTrackOffset(0) + (magSenRear->getTrackWidth() / 2) - (TRACK_WIDTH / 2));
+                    }
+                    // offsetRear = magSenRear->getTrackOffset(0);
                 }
                 else
                 {
-                    offsetRear = std::max(magSenRear->getTrackOffset(0), magSenRear->getTrackOffset(0) + (magSenRear->getTrackWidth() / 2) - (TRACK_WIDTH / 2));
+                    if (forkSelect)
+                    {
+                        offsetRear = std::min(magSenRear->getTrackOffset(0), magSenRear->getTrackOffset(0) - (magSenRear->getTrackWidth() / 2) + (TRACK_WIDTH / 2));
+                    }
+                    else
+                    {
+                        offsetRear = std::max(magSenRear->getTrackOffset(0), magSenRear->getTrackOffset(0) + (magSenRear->getTrackWidth() / 2) - (TRACK_WIDTH / 2));
+                    }
+                    forkStateRear = 1; //Expecting Fork
                 }
-                forkStateRear = 1;
             }
             else
             {
                 offsetRear = magSenRear->getTrackOffset(0);
-                if (forkStateRear > 0)
-                {
-                    forkStateRear = 0;
-                }
+                forkStateRear = 0;
+                mergeStateRear = 0;
             }
         }
 
@@ -291,6 +343,8 @@ int calcPose(float &angle, float &d)
             }
         }
         //printf("Angle = %3.2f, d = %3.2f\n", angle / M_PI * 180.0f, d);
+        offsetFrontMA.add(offsetFront);
+        offsetRearMA.add(offsetRear);
         return 1;
     }
     else
@@ -528,6 +582,7 @@ void showStatus(void)
         system("clear");
         printf("V = %3.2f\tW = %3.2f\tDir = %d\n", setV, setW, dir);
         printf("ForkSelect = %s\tForkStateFront = %d\tForkStateRear = %d\n", forkSelect ? "Right" : "Left", forkStateFront, forkStateRear);
+        printf("MergeStateFront = %d\tMergeStateRear = %d\n", mergeStateFront, mergeStateRear);
         printf("Angle = %3.2f, d = %3.2f\n", angle_status / M_PI * 180.0f, d_status);
         printf("X: %d\tY: %d\tAngle: %d\tTagNum: %d\n", xpos, ypos, qrAngle, tagNum);
         printf("MagSen1: of1 = %d\tof2 = %d\t width = %d\n", magSen1->getTrackOffset(0), magSen1->getTrackOffset(1), magSen1->getTrackWidth());
