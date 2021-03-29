@@ -5,12 +5,12 @@
 #include <cmath>
 #include <wiringSerial.h>
 
-#include "JoyStick.h"
-#include "PIDController.h"
-#include "MagneticSensor.h"
-#include "SRampGenerator.h"
-#include "QRCode.h"
-#include "Car.h"
+#include "../lib/JoyStick.h"
+#include "../lib/PIDController.h"
+#include "../lib/MagneticSensor.h"
+#include "../lib/SRampGenerator.h"
+#include "../lib/QRCode.h"
+#include "../lib/Car.h"
 
 #define _USE_MATH_DEFINES
 #define JS_PATH "/dev/input/js0"
@@ -18,6 +18,8 @@
 #define MS_PATH2 "/dev/ttyAMA2"
 #define MAX_SPEED (1000)
 #define S_RAMP_TIME (75)
+#define TRACK_WIDTH (30)     //Magnetic Track Width in mm
+#define FORK_WIDTH_THLD (40) //Fork Threshold Width in mm
 
 enum OperationMode
 {
@@ -38,7 +40,9 @@ float angle_status, d_status;
 //Magnetic Sensor Variables
 MagneticSensor *magSen1, *magSen2;
 int lastOffset = 0;
-int forkSelect = 0; //Left: 0, Right: 1
+int forkSelect = 0;     //Left: 0, Right: 1
+int forkStateFront = 0; //0: No fork expected, 1:Fork Expected, 2:Passing Fork
+int forkStateRear = 0;  //0: No fork expected, 1:Fork Expected, 2:Passing Fork
 
 //QRCode Variables
 QRCode *myQR;
@@ -58,8 +62,8 @@ float setW = 0.0f;
 int dir = 1;
 
 //PID Controllers
-PIDContorller headingPID(2, 0.0, 10, 3, -3, 0.3);
-PIDContorller offsetPID(0.01, 0.0, 0.005, 3, -3, 0.3);
+PIDContorller headingPID(2, 0.00, 4, 3, -3, 1);
+PIDContorller offsetPID(0.01, 0.0, 0.005, 3, -3, 1);
 PIDContorller linearPID(2, 0.003, 0.00, 1000, -1000, 10);
 
 int calcPose(float &angle, float &d);
@@ -109,6 +113,7 @@ int main(int argc, char **argv)
             if ((magSen1->getTrackCount() > 0) && (magSen2->getTrackCount() > 0))
             {
                 dir *= -1;
+                // forkSelect ^= 1;
                 offsetPID.clear();
                 headingPID.clear();
                 linearPID.clear();
@@ -136,83 +141,99 @@ int main(int argc, char **argv)
 
 int calcPose(float &angle, float &d)
 {
-    if (magSen1->getTrackCount() >= 1 && magSen2->getTrackCount() >= 1)
+    MagneticSensor *magSenFront, *magSenRear;
+    if (dir == 1)
     {
-        int16_t offset1, offset2;
+        magSenFront = magSen1;
+        magSenRear = magSen2;
+    }
+    else
+    {
+        magSenFront = magSen2;
+        magSenRear = magSen1;
+    }
 
-        if (forkSelect)
+    if (magSenFront->getTrackCount() >= 1 && magSenRear->getTrackCount() >= 1)
+    {
+        int16_t offsetFront, offsetRear;
+
+        if (magSenFront->getTrackCount() == 2)
         {
-            if (magSen1->getTrackCount() == 2)
+            if (forkStateFront > 0)
             {
-                offset1 = magSen1->getTrackOffset(1);
+                offsetFront = magSenFront->getTrackOffset(forkSelect);
+                forkStateFront = 2;
             }
             else
             {
-                if (magSen1->getTrackWidth() > 32)
-                {
-                    offset1 = std::max(magSen1->getTrackOffset(0), magSen1->getTrackOffset(0) + (magSen1->getTrackWidth() / 2) - 15);
-                }
-                else
-                {
-                    offset1 = magSen1->getTrackOffset(0);
-                }
-            }
-            if (magSen2->getTrackCount() == 2)
-            {
-                offset2 = magSen2->getTrackOffset(0);
-            }
-            else
-            {
-                if (magSen2->getTrackWidth() > 32)
-                {
-                    offset2 = std::min(magSen2->getTrackOffset(0), magSen2->getTrackOffset(0) - (magSen2->getTrackWidth() / 2) + 15);
-                }
-                else
-                {
-                    offset2 = magSen2->getTrackOffset(0);
-                }
+                offsetFront = abs(magSenFront->getTrackOffset(0)) < abs(magSenFront->getTrackOffset(1)) ? magSenFront->getTrackOffset(0) : magSenFront->getTrackOffset(1);
             }
         }
         else
         {
-            if (magSen1->getTrackCount() == 2)
+            if (magSenFront->getTrackWidth() > FORK_WIDTH_THLD)
             {
-                offset1 = magSen1->getTrackOffset(0);
-            }
-            else
-            {
-                if (magSen1->getTrackWidth() > 32)
+                if (forkSelect)
                 {
-                    offset1 = std::min(magSen1->getTrackOffset(0), magSen1->getTrackOffset(0) - (magSen1->getTrackWidth() / 2) + 15);
+                    offsetFront = std::max(magSenFront->getTrackOffset(0), magSenFront->getTrackOffset(0) + (magSenFront->getTrackWidth() / 2) - (TRACK_WIDTH / 2));
                 }
                 else
                 {
-                    offset1 = magSen1->getTrackOffset(0);
+                    offsetFront = std::min(magSenFront->getTrackOffset(0), magSenFront->getTrackOffset(0) - (magSenFront->getTrackWidth() / 2) + (TRACK_WIDTH / 2));
                 }
-            }
-            if (magSen2->getTrackCount() == 2)
-            {
-                offset2 = magSen2->getTrackOffset(1);
+                forkStateFront = 1;
             }
             else
             {
-                if (magSen2->getTrackWidth() > 32)
+                offsetFront = magSenFront->getTrackOffset(0);
+                if (forkStateFront > 0)
                 {
-                    offset2 = std::max(magSen2->getTrackOffset(0), magSen2->getTrackOffset(0) + (magSen2->getTrackWidth() / 2) - 15);
+                    forkStateFront = 0;
+                }
+            }
+        }
+        if (magSenRear->getTrackCount() == 2)
+        {
+            if (forkStateRear > 0)
+            {
+                offsetRear = magSenRear->getTrackOffset(forkSelect ^ 1);
+                forkStateRear = 2;
+            }
+            else
+            {
+                offsetRear = abs(magSenRear->getTrackOffset(0)) < abs(magSenRear->getTrackOffset(1)) ? magSenRear->getTrackOffset(0) : magSenRear->getTrackOffset(1);
+            }
+        }
+        else
+        {
+            if (magSenRear->getTrackWidth() > FORK_WIDTH_THLD)
+            {
+                if (forkSelect)
+                {
+                    offsetRear = std::min(magSenRear->getTrackOffset(0), magSenRear->getTrackOffset(0) - (magSenRear->getTrackWidth() / 2) + (TRACK_WIDTH / 2));
                 }
                 else
                 {
-                    offset2 = magSen2->getTrackOffset(0);
+                    offsetRear = std::max(magSenRear->getTrackOffset(0), magSenRear->getTrackOffset(0) + (magSenRear->getTrackWidth() / 2) - (TRACK_WIDTH / 2));
+                }
+                forkStateRear = 1;
+            }
+            else
+            {
+                offsetRear = magSenRear->getTrackOffset(0);
+                if (forkStateRear > 0)
+                {
+                    forkStateRear = 0;
                 }
             }
         }
 
-        // offset1 = magSen1->getTrackOffset(0);
-        // offset2 = magSen2->getTrackOffset(0);
+        // offsetFront = magSenFront->getTrackOffset(0);
+        // offsetRear = magSenRear->getTrackOffset(0);
 
-        if ((offset1 == 0) || (offset2 == 0))
+        if ((offsetFront == 0) || (offsetRear == 0))
         {
-            if (offset1 == offset2)
+            if (offsetFront == offsetRear)
             {
                 //printf("Both offset is Zero\n");
                 angle = 0;
@@ -221,52 +242,52 @@ int calcPose(float &angle, float &d)
             else
             {
                 //printf("One offset is Zero\n");
-                if (offset1 == 0)
+                if (offsetFront == 0)
                 {
-                    angle = -atan2(offset2, CAR_LENGTH);
-                    d = cos(angle) * offset2 / 2.0f;
+                    angle = -atan2(offsetRear, CAR_LENGTH);
+                    d = cos(angle) * offsetRear / 2.0f;
                 }
                 else
                 {
-                    angle = -atan2(offset1, CAR_LENGTH);
-                    d = -cos(angle) * offset1 / 2.0f;
+                    angle = -atan2(offsetFront, CAR_LENGTH);
+                    d = -cos(angle) * offsetFront / 2.0f;
                 }
             }
         }
-        else if ((offset1 & 0x8000) ^ (offset2 & 0x8000)) //Determine if AGV Center crosses track
+        else if ((offsetFront & 0x8000) ^ (offsetRear & 0x8000)) //Determine if AGV Center crosses track
         {
             //printf("Same Side\n");
-            if (abs(offset1) == abs(offset2))
+            if (abs(offsetFront) == abs(offsetRear))
             {
                 angle = 0;
-                d = -offset1;
+                d = -offsetFront;
             }
             else
             {
 
-                if (offset1 > 0)
+                if (offsetFront > 0)
                 {
-                    angle = atan2(abs(offset2) - abs(offset1), CAR_LENGTH);
-                    d = -cos(angle) * (abs(offset1) + abs(offset2)) / 2.0f;
+                    angle = atan2(abs(offsetRear) - abs(offsetFront), CAR_LENGTH);
+                    d = -cos(angle) * (abs(offsetFront) + abs(offsetRear)) / 2.0f;
                 }
                 else
                 {
-                    angle = -atan2(abs(offset2) - abs(offset1), CAR_LENGTH);
-                    d = cos(angle) * (abs(offset1) + abs(offset2)) / 2.0f;
+                    angle = -atan2(abs(offsetRear) - abs(offsetFront), CAR_LENGTH);
+                    d = cos(angle) * (abs(offsetFront) + abs(offsetRear)) / 2.0f;
                 }
             }
         }
         else
         {
             //printf("Diff Side\n");
-            angle = -atan2(offset1, fabs(offset1 * CAR_LENGTH / abs(offset1 + offset2)));
-            if (abs(offset2) > abs(offset1))
+            angle = -atan2(offsetFront, fabs(offsetFront * CAR_LENGTH / abs(offsetFront + offsetRear)));
+            if (abs(offsetRear) > abs(offsetFront))
             {
-                d = -sin(angle) * abs(offset2 - offset1) * CAR_LENGTH / (2.0f * abs(offset1 + offset2));
+                d = -sin(angle) * abs(offsetRear - offsetFront) * CAR_LENGTH / (2.0f * abs(offsetFront + offsetRear));
             }
             else
             {
-                d = sin(angle) * abs(offset1 - offset2) * CAR_LENGTH / (2.0f * abs(offset1 + offset2));
+                d = sin(angle) * abs(offsetFront - offsetRear) * CAR_LENGTH / (2.0f * abs(offsetFront + offsetRear));
             }
         }
         //printf("Angle = %3.2f, d = %3.2f\n", angle / M_PI * 180.0f, d);
@@ -274,6 +295,7 @@ int calcPose(float &angle, float &d)
     }
     else
     {
+        // printf("offsetFrontPrev = %d\toffsetRearPrev = %d\n", offsetFrontPrev, offsetRearPrev);
         return 0;
     }
 }
@@ -345,7 +367,7 @@ void followTrack(void)
         else
         {
             setV = rampGenerator.getV();
-            setW = dir * headingPID.calculate(offsetPID.calculate(0, d), dir * angle);
+            setW = headingPID.calculate(offsetPID.calculate(0, d), angle);
         }
 
         // if (qrLocalizaiton)
@@ -504,7 +526,8 @@ void showStatus(void)
     while (isJoyStickAlive)
     {
         system("clear");
-        printf("V = %3.2f\tW = %3.2f\n", setV, setW);
+        printf("V = %3.2f\tW = %3.2f\tDir = %d\n", setV, setW, dir);
+        printf("ForkSelect = %s\tForkStateFront = %d\tForkStateRear = %d\n", forkSelect ? "Right" : "Left", forkStateFront, forkStateRear);
         printf("Angle = %3.2f, d = %3.2f\n", angle_status / M_PI * 180.0f, d_status);
         printf("X: %d\tY: %d\tAngle: %d\tTagNum: %d\n", xpos, ypos, qrAngle, tagNum);
         printf("MagSen1: of1 = %d\tof2 = %d\t width = %d\n", magSen1->getTrackOffset(0), magSen1->getTrackOffset(1), magSen1->getTrackWidth());
