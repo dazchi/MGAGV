@@ -50,7 +50,8 @@ int mergeStateFront = 0; //0: No merge expected, 1:Expecting Merge from Left, 2:
 int mergeStateRear = 0;  //0: No merge expected, 1:Expecting Merge from Left, 2:Expecting Merge from Right
 int mergeTimeoutFront = 0;
 int mergeTimeoutRear = 0;
-int mergeFlag = 0;
+int mergeFlag = 0; //0: Not merging, 1: Front Merging, 2: Rear Merging
+int sideTagFlag = 0;
 
 //QRCode Variables
 QRCode *myQR;
@@ -68,6 +69,7 @@ Car *dejaVu;
 float setV = 0;
 float setW = 0.0f;
 int dir = 1;
+int maxSpeed = MAX_SPEED;
 
 //PID Controllers
 PIDContorller headingPID(2, 0.00, 4, 3, -3, 1);
@@ -130,7 +132,7 @@ int main(int argc, char **argv)
                 forkStateRear = 0;
                 mergeStateFront = 0;
                 mergeStateRear = 0;
-                rampGenerator.generateVelocityProfile(dir * MAX_SPEED, S_RAMP_TIME);
+                rampGenerator.generateVelocityProfile(dir * maxSpeed, S_RAMP_TIME);
                 // forkSelect = rand() % 2;
             }
             else
@@ -234,6 +236,10 @@ int calcPose(float &angle, float &d)
                 forkStateFront = 0;
                 if (mergeTimeoutFront > FORK_MERGE_TIMEOUT)
                 {
+                    if ((mergeStateFront > 0) && (mergeFlag == 0)) //Expect to merge but not merged
+                    {
+                        sideTagFlag = mergeStateFront;
+                    }
                     mergeStateFront = 0;
                 }
             }
@@ -439,7 +445,7 @@ void followTrack(void)
                     {
                         dir *= -1;
                     }
-                    rampGenerator.generateVelocityProfile(0, dir * MAX_SPEED, S_RAMP_TIME);
+                    rampGenerator.generateVelocityProfile(0, dir * maxSpeed, S_RAMP_TIME);
                     qrLocalizaiton = false;
                     slowFlag = false;
                 }
@@ -488,6 +494,18 @@ void followTrack(void)
     dejaVu->setParams(setV, setW);
     // printf("Angle = %3.2f, d = %3.2f\n", angle / M_PI * 180.0f, d);
     // printf("V = %3.2f\tW = %3.2f\n", setV, setW);
+    if (sideTagFlag == 1)
+    {
+        maxSpeed = 800;
+        rampGenerator.generateVelocityProfile(dir * maxSpeed, 80);
+        sideTagFlag = 0;
+    }
+    else if (sideTagFlag == 2)
+    {
+        maxSpeed = 1500;
+        rampGenerator.generateVelocityProfile(dir * maxSpeed, 80);
+        sideTagFlag = 0;
+    }
     usleep(10000);
 }
 
@@ -527,7 +545,7 @@ void joyStickReceive(void)
                     {
                         dir *= -1;
                     }
-                    rampGenerator.generateVelocityProfile(0, dir * MAX_SPEED, S_RAMP_TIME);
+                    rampGenerator.generateVelocityProfile(0, dir * maxSpeed, S_RAMP_TIME);
                     qrLocalizaiton = false;
                     slowFlag = false;
                 }
@@ -620,6 +638,7 @@ void showStatus(void)
         printf("X: %d\tY: %d\tAngle: %d\tTagNum: %d\n", xpos, ypos, qrAngle, tagNum);
         printf("MagSen1: of1 = %d\tof2 = %d\t width = %d\n", magSen1->getTrackOffset(0), magSen1->getTrackOffset(1), magSen1->getTrackWidth());
         printf("MagSen2: of1 = %d\tof2 = %d\t width = %d\n", magSen2->getTrackOffset(0), magSen2->getTrackOffset(1), magSen2->getTrackWidth());
+        printf("SideTagFlag = %d\n", sideTagFlag);
         usleep(100000);
     }
 }
